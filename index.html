@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EducaGestão Creche - Registro & Gestão de Ocorrências</title>
+    <meta name="description" content="Sistema inteligente de gestão escolar e registro rápido de ocorrências (atrasos, faltas, atestados, amamentação e saídas) para creches e escolas infantis.">
+    <!-- Google Fonts: Outfit (Títulos/Amigável) e Inter (Dados) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- CSS Customizado -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="light-mode">
+    <!-- Container Principal do App -->
+    <div class="app-container">
+        
+        <!-- SIDEBAR (MENU LATERAL) -->
+        <aside class="app-sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-container">
+                    <span class="logo-emoji">🧸</span>
+                    <div class="logo-text">
+                        <span class="brand-title">EducaGestão</span>
+                        <span class="brand-subtitle">Portal Creche</span>
+                    </div>
+                </div>
+                <button class="sidebar-close-btn" id="close-sidebar-btn">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            
+            <nav class="sidebar-menu">
+                <a href="#" class="menu-item active" data-target="dashboard">
+                    <i data-lucide="layout-dashboard"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="menu-item" data-target="students">
+                    <i data-lucide="baby"></i>
+                    <span>Alunos</span>
+                </a>
+                
+                <div class="menu-section">
+                    <span class="menu-section-title">Ocorrências</span>
+                </div>
+                
+                <a href="#" class="menu-item" data-target="occurrences" data-module="atrasos">
+                    <i data-lucide="clock"></i>
+                    <span>Atrasos</span>
+                </a>
+                <a href="#" class="menu-item" data-target="occurrences" data-module="saidas">
+                    <i data-lucide="log-out"></i>
+                    <span>Saídas Antecipadas</span>
+                </a>
+                <a href="#" class="menu-item" data-target="occurrences" data-module="atestados">
+                    <i data-lucide="activity"></i>
+                    <span>Atestados</span>
+                </a>
+                <a href="#" class="menu-item" data-target="occurrences" data-module="faltas">
+                    <i data-lucide="calendar-x"></i>
+                    <span>Faltas</span>
+                </a>
+                <a href="#" class="menu-item" data-target="occurrences" data-module="amamentacao">
+                    <i data-lucide="heart"></i>
+                    <span>Amamentação</span>
+                </a>
+                
+                <div class="menu-section">
+                    <span class="menu-section-title">Gestão & Dados</span>
+                </div>
+                
+                <a href="#" class="menu-item" data-target="reports">
+                    <i data-lucide="file-text"></i>
+                    <span>Relatórios & Exportação</span>
+                </a>
+                <a href="#" class="menu-item" data-target="insights">
+                    <i data-lucide="sparkles"></i>
+                    <span>Insights & Pedagogia</span>
+                    <span class="badge-new">IA</span>
+                </a>
+                <a href="#" class="menu-item" data-target="settings">
+                    <i data-lucide="settings"></i>
+                    <span>Configurações</span>
+                </a>
+            </nav>
+            
+            <!-- Rodapé da Sidebar -->
+            <div class="sidebar-footer">
+                <div class="user-profile-widget">
+                    <div class="user-avatar" id="current-user-avatar">👩‍🏫</div>
+                    <div class="user-info">
+                        <span class="user-name" id="current-user-name">Coord. Ana Clara</span>
+                        <span class="user-role-badge" id="current-user-role-badge">Diretoria</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- MAIN CONTENT (CONTEÚDO PRINCIPAL) -->
+        <main class="app-main">
+            <!-- HEADER (CABEÇALHO) -->
+            <header class="app-header">
+                <div class="header-left">
+                    <button class="menu-toggle-btn" id="menu-toggle-btn">
+                        <i data-lucide="menu"></i>
+                    </button>
+                    <div class="header-title-wrapper">
+                        <h1 id="page-title" class="page-title">Dashboard Geral</h1>
+                        <p id="page-subtitle" class="page-subtitle">Visão geral das atividades da creche hoje.</p>
+                    </div>
+                </div>
+                
+                <div class="header-right">
+                    <!-- Busca Inteligente de Aluno -->
+                    <div class="search-bar-wrapper">
+                        <i data-lucide="search" class="search-icon"></i>
+                        <input type="text" placeholder="Buscar aluno..." id="global-student-search">
+                        <div class="search-results-dropdown" id="search-results-dropdown"></div>
+                    </div>
+                    
+                    <!-- Botão de Atalho Rápido -->
+                    <button class="quick-action-btn" id="header-quick-action-btn">
+                        <i data-lucide="plus-circle"></i>
+                        <span>Novo Registro</span>
+                    </button>
+                    
+                    <!-- Alternador de Tema -->
+                    <button class="theme-toggle-btn" id="theme-toggle-btn" title="Alternar Modo Escuro/Claro">
+                        <i data-lucide="moon" class="theme-icon-dark"></i>
+                        <i data-lucide="sun" class="theme-icon-light"></i>
+                    </button>
+                    
+                    <!-- Seletor de Perfil / Login Fictício -->
+                    <div class="role-selector-wrapper">
+                        <button class="role-dropdown-trigger" id="role-dropdown-trigger">
+                            <span id="trigger-role-badge" class="role-badge badge-diretora">Diretoria</span>
+                            <i data-lucide="chevron-down"></i>
+                        </button>
+                        <div class="role-dropdown-menu" id="role-dropdown-menu">
+                            <a href="#" class="role-option active" data-role="diretora" data-name="Diretora Ana Clara" data-avatar="👩‍💼">
+                                <span class="role-badge badge-diretora">Diretoria</span>
+                                <span class="role-desc">Acesso total e configurações</span>
+                            </a>
+                            <a href="#" class="role-option" data-role="pedagoga" data-name="Pedagoga Marina" data-avatar="👩‍🏫">
+                                <span class="role-badge badge-pedagoga">Pedagogia</span>
+                                <span class="role-desc">Insights e relatórios pedagógicos</span>
+                            </a>
+                            <a href="#" class="role-option" data-role="auxiliar" data-name="Auxiliar Jéssica" data-avatar="👩">
+                                <span class="role-badge badge-auxiliar">Auxiliar</span>
+                                <span class="role-desc">Apenas registro de ocorrências</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </header>
+            
+            <!-- PANEL: DASHBOARD -->
+            <section class="panel-section active" id="dashboard-panel">
+                <!-- Filtros Globais do Dashboard -->
+                <div class="filter-card">
+                    <div class="filter-card-header">
+                        <div class="filter-card-title">
+                            <i data-lucide="sliders-horizontal"></i>
+                            <span>Filtros do Painel Geral</span>
+                        </div>
+                        <button class="clear-filters-btn" id="btn-clear-dash-filters">Limpar Filtros</button>
+                    </div>
+                    <div class="filter-grid">
+                        <div class="filter-group">
+                            <label for="dash-filter-date-start">Data Inicial</label>
+                            <input type="date" id="dash-filter-date-start">
+                        </div>
+                        <div class="filter-group">
+                            <label for="dash-filter-date-end">Data Final</label>
+                            <input type="date" id="dash-filter-date-end">
+                        </div>
+                        <div class="filter-group">
+                            <label for="dash-filter-classroom">Sala/Turma</label>
+                            <select id="dash-filter-classroom">
+                                <option value="">Todas as salas</option>
+                                <option value="Alegria">Alegria</option>
+                                <option value="Carinho">Carinho</option>
+                                <option value="União">União</option>
+                                <option value="Amizade">Amizade</option>
+                                <option value="Felicidade">Felicidade</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="dash-filter-student">Criança</label>
+                            <select id="dash-filter-student">
+                                <option value="">Todas as crianças</option>
+                                <!-- Preenchido dinamicamente via JS -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Cards de Métricas Rápidas -->
+                <div class="metrics-grid">
+                    <div class="metric-card metric-atrasos" data-action="filter-module" data-module="atrasos">
+                        <div class="metric-header">
+                            <span class="metric-title">Atrasos</span>
+                            <div class="metric-icon-box">
+                                <i data-lucide="clock"></i>
+                            </div>
+                        </div>
+                        <div class="metric-value" id="card-metric-atrasos">0</div>
+                        <div class="metric-footer text-atrasos">
+                            <i data-lucide="trending-up" class="trend-icon"></i>
+                            <span id="card-metric-atrasos-sub">Minutos acumulados este mês</span>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card metric-faltas" data-action="filter-module" data-module="faltas">
+                        <div class="metric-header">
+                            <span class="metric-title">Faltas Totais</span>
+                            <div class="metric-icon-box">
+                                <i data-lucide="calendar-x"></i>
+                            </div>
+                        </div>
+                        <div class="metric-value" id="card-metric-faltas">0</div>
+                        <div class="metric-footer text-faltas">
+                            <span id="card-metric-faltas-sub">0 justificadas</span>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card metric-atestados" data-action="filter-module" data-module="atestados">
+                        <div class="metric-header">
+                            <span class="metric-title">Atestados Médicos</span>
+                            <div class="metric-icon-box">
+                                <i data-lucide="activity"></i>
+                            </div>
+                        </div>
+                        <div class="metric-value" id="card-metric-atestados">0</div>
+                        <div class="metric-footer text-atestados">
+                            <span id="card-metric-atestados-sub">Crianças afastadas hoje</span>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card metric-saidas" data-action="filter-module" data-module="saidas">
+                        <div class="metric-header">
+                            <span class="metric-title">Saídas Antecipadas</span>
+                            <div class="metric-icon-box">
+                                <i data-lucide="log-out"></i>
+                            </div>
+                        </div>
+                        <div class="metric-value" id="card-metric-saidas">0</div>
+                        <div class="metric-footer text-saidas">
+                            <span id="card-metric-saidas-sub">Retornos previstos hoje</span>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card metric-amamentacao" data-action="filter-module" data-module="amamentacao">
+                        <div class="metric-header">
+                            <span class="metric-title">Amamentação</span>
+                            <div class="metric-icon-box">
+                                <i data-lucide="heart"></i>
+                            </div>
+                        </div>
+                        <div class="metric-value" id="card-metric-amamentacao">0</div>
+                        <div class="metric-footer text-amamentacao">
+                            <span id="card-metric-amamentacao-sub">Tempo médio: 25min</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Grade de Gráficos -->
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <div class="chart-card-header">
+                            <h3>Volume de Atrasos Mensal</h3>
+                            <span class="chart-legend-pill">Evolução por Mês</span>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="chart-atrasos-mes"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-card">
+                        <div class="chart-card-header">
+                            <h3>Faltas por Sala/Turma</h3>
+                            <span class="chart-legend-pill">Total Acumulado</span>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="chart-faltas-sala"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-card">
+                        <div class="chart-card-header">
+                            <h3>Motivos mais Frequentes</h3>
+                            <span class="chart-legend-pill">Ocorrências</span>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="chart-motivos-frequentes"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-card">
+                        <div class="chart-card-header">
+                            <h3>Crianças com Mais Ocorrências</h3>
+                            <span class="chart-legend-pill">Alunos Recorrentes</span>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="chart-criancas-recorrentes"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-card full-width-chart">
+                        <div class="chart-card-header">
+                            <h3>Frequência Geral & Evolução Diária/Semanal</h3>
+                            <span class="chart-legend-pill">Presenças registradas versus faltas</span>
+                        </div>
+                        <div class="chart-container-large">
+                            <canvas id="chart-frequencia-mensal"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: ALUNOS -->
+            <section class="panel-section" id="students-panel">
+                <div class="action-bar">
+                    <div class="search-filter-students">
+                        <div class="input-icon-wrapper">
+                            <i data-lucide="search"></i>
+                            <input type="text" placeholder="Pesquisar por nome do aluno..." id="student-search-input">
+                        </div>
+                        <select id="student-filter-classroom">
+                            <option value="">Todas as Salas</option>
+                            <option value="Alegria">Sala Alegria</option>
+                            <option value="Carinho">Sala Carinho</option>
+                            <option value="União">Sala União</option>
+                            <option value="Amizade">Sala Amizade</option>
+                            <option value="Felicidade">Sala Felicidade</option>
+                        </select>
+                        <select id="student-filter-status">
+                            <option value="active">Ativos</option>
+                            <option value="inactive">Inativos</option>
+                            <option value="all">Todos</option>
+                        </select>
+                    </div>
+                    
+                    <button class="primary-btn" id="btn-add-student" data-access="diretora">
+                        <i data-lucide="plus"></i>
+                        <span>Adicionar Aluno</span>
+                    </button>
+                </div>
+                
+                <div class="table-card">
+                    <div class="table-responsive">
+                        <table class="data-table" id="students-table">
+                            <thead>
+                                <tr>
+                                    <th>Criança</th>
+                                    <th>Sala / Turma</th>
+                                    <th>Status</th>
+                                    <th>Total Atrasos</th>
+                                    <th>Total Faltas</th>
+                                    <th>Atestados Ativos</th>
+                                    <th class="actions-column">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="students-table-body">
+                                <!-- Preenchido por JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: OCORRÊNCIAS -->
+            <section class="panel-section" id="occurrences-panel">
+                <div class="action-bar">
+                    <div class="occurrence-module-info">
+                        <div class="module-badge" id="occurrence-module-badge">Atrasos</div>
+                        <p class="module-description" id="occurrence-module-description">Controle de atrasos na chegada das crianças.</p>
+                    </div>
+                    
+                    <div class="action-bar-buttons">
+                        <button class="primary-btn" id="btn-add-occurrence">
+                            <i data-lucide="plus"></i>
+                            <span id="btn-add-occurrence-text">Registrar Ocorrência</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Filtros Específicos do Módulo -->
+                <div class="filter-card">
+                    <div class="filter-grid-three">
+                        <div class="filter-group">
+                            <label for="occ-filter-classroom">Filtrar por Sala</label>
+                            <select id="occ-filter-classroom">
+                                <option value="">Todas as salas</option>
+                                <option value="Alegria">Alegria</option>
+                                <option value="Carinho">Carinho</option>
+                                <option value="União">União</option>
+                                <option value="Amizade">Amizade</option>
+                                <option value="Felicidade">Felicidade</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="occ-filter-search">Pesquisar Aluno</label>
+                            <input type="text" id="occ-filter-search" placeholder="Nome da criança...">
+                        </div>
+                        <div class="filter-group">
+                            <label for="occ-filter-date">Filtrar por Data</label>
+                            <input type="date" id="occ-filter-date">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tabela de Ocorrências -->
+                <div class="table-card">
+                    <div class="table-responsive">
+                        <table class="data-table" id="occurrences-table">
+                            <thead id="occurrences-table-header">
+                                <!-- Preenchido dinamicamente -->
+                            </thead>
+                            <tbody id="occurrences-table-body">
+                                <!-- Preenchido por JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="no-data-alert" id="no-occurrences-alert" style="display: none;">
+                        <i data-lucide="info"></i>
+                        <span>Nenhuma ocorrência registrada com os filtros selecionados.</span>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: RELATÓRIOS & EXPORTAÇÃO -->
+            <section class="panel-section" id="reports-panel">
+                <div class="filter-card">
+                    <div class="filter-card-header">
+                        <div class="filter-card-title">
+                            <i data-lucide="filter"></i>
+                            <span>Gerador de Relatórios Consolidados</span>
+                        </div>
+                        <div class="export-actions">
+                            <button class="export-btn excel-btn" id="btn-export-excel">
+                                📊 Exportar Excel
+                            </button>
+                            <button class="export-btn pdf-btn" id="btn-export-pdf">
+                                📄 Exportar PDF
+                            </button>
+                        </div>
+                    </div>
+                    <div class="filter-grid">
+                        <div class="filter-group">
+                            <label for="report-filter-type">Tipo de Ocorrência</label>
+                            <select id="report-filter-type">
+                                <option value="all">Todas as ocorrências</option>
+                                <option value="atraso">Atrasos</option>
+                                <option value="saida">Saídas Antecipadas</option>
+                                <option value="atestado">Atestados Médicos</option>
+                                <option value="falta">Faltas</option>
+                                <option value="amamentacao">Sala de Amamentação</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="report-filter-classroom">Sala / Turma</label>
+                            <select id="report-filter-classroom">
+                                <option value="">Todas as salas</option>
+                                <option value="Alegria">Alegria</option>
+                                <option value="Carinho">Carinho</option>
+                                <option value="União">União</option>
+                                <option value="Amizade">Amizade</option>
+                                <option value="Felicidade">Felicidade</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="report-filter-date-start">Data Inicial</label>
+                            <input type="date" id="report-filter-date-start">
+                        </div>
+                        <div class="filter-group">
+                            <label for="report-filter-date-end">Data Final</label>
+                            <input type="date" id="report-filter-date-end">
+                        </div>
+                    </div>
+                    <div class="report-quick-presets">
+                        <span class="presets-title">Períodos Rápidos:</span>
+                        <button class="preset-btn" data-days="7">Últimos 7 dias</button>
+                        <button class="preset-btn" data-days="30">Últimos 30 dias</button>
+                        <button class="preset-btn" data-days="90">Último Trimestre</button>
+                        <button class="preset-btn" data-days="365">Este Ano</button>
+                    </div>
+                </div>
+                
+                <div class="report-stats-banner">
+                    <div class="report-stat-item">
+                        <span class="report-stat-label">Total de Ocorrências</span>
+                        <span class="report-stat-val" id="report-total-records">0</span>
+                    </div>
+                    <div class="report-stat-item">
+                        <span class="report-stat-label">Crianças Impactadas</span>
+                        <span class="report-stat-val text-primary" id="report-impacted-kids">0</span>
+                    </div>
+                    <div class="report-stat-item">
+                        <span class="report-stat-label">Média Diária</span>
+                        <span class="report-stat-val text-warning" id="report-daily-avg">0.0</span>
+                    </div>
+                </div>
+                
+                <!-- Tabela Consolidada de Relatórios -->
+                <div class="table-card">
+                    <div class="table-responsive">
+                        <table class="data-table" id="reports-table">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Criança</th>
+                                    <th>Sala</th>
+                                    <th>Tipo de Ocorrência</th>
+                                    <th>Detalhes / Motivo</th>
+                                    <th>Responsável / Func.</th>
+                                    <th>Assinatura / Comprovante</th>
+                                </tr>
+                            </thead>
+                            <tbody id="reports-table-body">
+                                <!-- Preenchido por JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: INSIGHTS & INTELIGÊNCIA -->
+            <section class="panel-section" id="insights-panel">
+                <div class="insights-top-intro">
+                    <div class="sparkle-logo">✨</div>
+                    <div class="insights-intro-text">
+                        <h2>Análise Inteligente e Insights Pedagógicos</h2>
+                        <p>Nossa IA analisa padrões de presença e comportamento na creche para propor melhorias operacionais, acompanhamentos médicos preventivos e suporte pedagógico humanizado.</p>
+                    </div>
+                </div>
+                
+                <div class="insights-grid">
+                    <!-- Esquerda: Alertas Críticos e Padrões -->
+                    <div class="insights-column">
+                        <div class="insight-group-card alert-card-urgent">
+                            <div class="insight-card-header">
+                                <i data-lucide="alert-triangle"></i>
+                                <h3>Atenção Necessária (Alto Risco de Atraso/Falta)</h3>
+                            </div>
+                            <div class="insight-card-content" id="insights-urgent-list">
+                                <!-- Preenchido dinamicamente por JS -->
+                            </div>
+                        </div>
+                        
+                        <div class="insight-group-card">
+                            <div class="insight-card-header">
+                                <i data-lucide="clock"></i>
+                                <h3>Padrões de Atrasos Recorrentes</h3>
+                            </div>
+                            <div class="insight-card-content" id="insights-delay-patterns">
+                                <!-- Preenchido por JS -->
+                            </div>
+                        </div>
+                        
+                        <div class="insight-group-card">
+                            <div class="insight-card-header">
+                                <i data-lucide="calendar-x"></i>
+                                <h3>Padrões de Faltas Sistemáticas</h3>
+                            </div>
+                            <div class="insight-card-content" id="insights-absence-patterns">
+                                <!-- Preenchido por JS -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Direita: Salas Críticas, Saúde e Diretrizes Pedagógicas -->
+                    <div class="insights-column">
+                        <div class="insight-group-card alert-card-medical">
+                            <div class="insight-card-header">
+                                <i data-lucide="heart-handshake"></i>
+                                <h3>Acompanhamento de Saúde (Retornos de Atestado)</h3>
+                            </div>
+                            <div class="insight-card-content" id="insights-medical-list">
+                                <!-- Preenchido por JS -->
+                            </div>
+                        </div>
+                        
+                        <div class="insight-group-card">
+                            <div class="insight-card-header">
+                                <i data-lucide="bar-chart-3"></i>
+                                <h3>Gargalos e Foco por Sala de Aula</h3>
+                            </div>
+                            <div class="insight-card-content" id="insights-classroom-focus">
+                                <!-- Preenchido por JS -->
+                            </div>
+                        </div>
+                        
+                        <div class="insight-group-card alert-card-pedagogic">
+                            <div class="insight-card-header">
+                                <i data-lucide="graduation-cap"></i>
+                                <h3>Diretrizes Pedagógicas Sugeridas</h3>
+                            </div>
+                            <div class="insight-card-content" id="insights-pedagogical-suggestions">
+                                <!-- Preenchido por JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- PANEL: CONFIGURAÇÕES -->
+            <section class="panel-section" id="settings-panel">
+                <div class="settings-grid">
+                    <div class="settings-card">
+                        <h3>Banco de Dados & Dados de Demonstração</h3>
+                        <p class="settings-desc">Controle o armazenamento local do navegador para este sistema.</p>
+                        
+                        <div class="settings-actions">
+                            <div class="settings-action-row">
+                                <div class="action-info">
+                                    <span class="action-title">Gerar Dados Fictícios de Demonstração</span>
+                                    <span class="action-desc">Preenche os últimos 30 dias com ocorrências aleatórias realistas para popular os gráficos e dashboards imediatamente.</span>
+                                </div>
+                                <button class="secondary-btn" id="btn-seed-dummy-data">Gerar Demo</button>
+                            </div>
+                            
+                            <div class="settings-action-row">
+                                <div class="action-info">
+                                    <span class="action-title">Limpar Todas as Ocorrências</span>
+                                    <span class="action-desc text-danger">Remove todos os registros de ocorrências (atrasos, faltas, etc.) mantendo apenas o cadastro de alunos.</span>
+                                </div>
+                                <button class="danger-btn" id="btn-clear-occurrences" data-access="diretora">Limpar Histórico</button>
+                            </div>
+                            
+                            <div class="settings-action-row">
+                                <div class="action-info">
+                                    <span class="action-title">Reiniciar Todo o Sistema</span>
+                                    <span class="action-desc text-danger">Zera completamente o `localStorage`, deletando novos alunos cadastrados e re-semeando a lista inicial original de 68 alunos.</span>
+                                </div>
+                                <button class="danger-btn" id="btn-reset-entire-app" data-access="diretora">Zerar Sistema</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-card">
+                        <h3>Configurações de Acesso e Regras</h3>
+                        <p class="settings-desc">Ajuste o comportamento do sistema de login fictício e permissões.</p>
+                        
+                        <div class="settings-info-box">
+                            <div class="settings-info-item">
+                                <span class="info-label">Usuários e Permissões Simuladas:</span>
+                                <ul class="permissions-list">
+                                    <li><strong>Diretora:</strong> Acesso irrestrito. Pode criar/editar alunos, excluir registros, zerar banco de dados e visualizar todos os gráficos.</li>
+                                    <li><strong>Pedagogia:</strong> Visualização de dados completa, gráficos, relatórios e alertas pedagógicos. Pode registrar ocorrências. Não pode inativar alunos ou excluir históricos.</li>
+                                    <li><strong>Auxiliar:</strong> Foco exclusivo em preenchimento e busca. Pode pesquisar alunos e adicionar ocorrências diárias. Não tem acesso a insights avançados ou configurações administrativas.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <!-- ============================================== -->
+    <!-- MODAL: REGISTRO DE ALUNO (NOVO / EDIÇÃO) -->
+    <!-- ============================================== -->
+    <div class="modal-overlay" id="student-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2 id="student-modal-title">Cadastrar Novo Aluno</h2>
+                <button class="modal-close-btn" data-close="student-modal">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <form id="student-form">
+                <input type="hidden" id="student-form-id">
+                <div class="form-body">
+                    <div class="form-group">
+                        <label for="student-form-name">Nome da Criança*</label>
+                        <input type="text" id="student-form-name" required placeholder="Ex: Gabriel Nogueira">
+                    </div>
+                    <div class="form-group">
+                        <label for="student-form-classroom">Sala / Turma*</label>
+                        <select id="student-form-classroom" required>
+                            <option value="">Selecione uma sala</option>
+                            <option value="Alegria">Alegria</option>
+                            <option value="Carinho">Carinho</option>
+                            <option value="União">União</option>
+                            <option value="Amizade">Amizade</option>
+                            <option value="Felicidade">Felicidade</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="student-form-status-container" style="display:none;">
+                        <label for="student-form-status">Status do Aluno</label>
+                        <select id="student-form-status">
+                            <option value="active">Ativo</option>
+                            <option value="inactive">Inativo</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="secondary-btn" data-close="student-modal">Cancelar</button>
+                    <button type="submit" class="primary-btn">Salvar Aluno</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- MODAL: REGISTRO RÁPIDO DE OCORRÊNCIA (MUTÁVEL) -->
+    <!-- ============================================== -->
+    <div class="modal-overlay" id="occurrence-modal">
+        <div class="modal-card modal-large">
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <span class="modal-emoji-header" id="occ-modal-emoji">⏰</span>
+                    <h2 id="occ-modal-title">Registrar Ocorrência</h2>
+                </div>
+                <button class="modal-close-btn" data-close="occurrence-modal">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            
+            <!-- Seletor do Tipo de Ocorrência -->
+            <div class="modal-module-selector" id="occ-modal-type-selector-container">
+                <label>Tipo de Ocorrência:</label>
+                <div class="module-radio-buttons">
+                    <label class="radio-btn active" data-type="atraso">
+                        <input type="radio" name="occ-type" value="atraso" checked>
+                        <span>Atraso</span>
+                    </label>
+                    <label class="radio-btn" data-type="saida">
+                        <input type="radio" name="occ-type" value="saida">
+                        <span>Saída Antecipada</span>
+                    </label>
+                    <label class="radio-btn" data-type="atestado">
+                        <input type="radio" name="occ-type" value="atestado">
+                        <span>Atestado</span>
+                    </label>
+                    <label class="radio-btn" data-type="falta">
+                        <input type="radio" name="occ-type" value="falta">
+                        <span>Falta</span>
+                    </label>
+                    <label class="radio-btn" data-type="amamentacao">
+                        <input type="radio" name="occ-type" value="amamentacao">
+                        <span>Amamentação</span>
+                    </label>
+                </div>
+            </div>
+
+            <form id="occurrence-form">
+                <input type="hidden" id="occ-form-id">
+                <input type="hidden" id="occ-form-type-hidden" value="atraso">
+                
+                <div class="form-body">
+                    <!-- Seção da Criança (Compartilhada por todos) -->
+                    <div class="form-row">
+                        <div class="form-group col-8">
+                            <label for="occ-student-search">Nome da Criança*</label>
+                            <div class="autocomplete-wrapper">
+                                <input type="text" id="occ-student-search" autocomplete="off" required placeholder="Digite o nome da criança para buscar...">
+                                <input type="hidden" id="occ-student-id">
+                                <div class="autocomplete-dropdown" id="occ-student-autocomplete-dropdown"></div>
+                            </div>
+                        </div>
+                        <div class="form-group col-4">
+                            <label for="occ-student-classroom">Sala / Turma</label>
+                            <input type="text" id="occ-student-classroom" readonly class="readonly-input" placeholder="Autopreenchimento">
+                        </div>
+                    </div>
+
+                    <!-- ============================================== -->
+                    <!-- CAMPOS DINÂMICOS: ATRASO -->
+                    <!-- ============================================== -->
+                    <div class="dynamic-fields-section" id="fields-atraso">
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="atraso-date">Data do Atraso*</label>
+                                <input type="date" id="atraso-date">
+                            </div>
+                            <div class="form-group col-6">
+                                <label for="atraso-time">Hora de Chegada*</label>
+                                <input type="time" id="atraso-time">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="atraso-reason">Motivo do Atraso*</label>
+                                <select id="atraso-reason">
+                                    <option value="">Selecione um motivo</option>
+                                    <option value="Consulta médica">Consulta médica</option>
+                                    <option value="Trânsito">Trânsito</option>
+                                    <option value="Chuva">Chuvas / Condições Climáticas</option>
+                                    <option value="Dormiu pouco">Dormiu pouco / Cansaço</option>
+                                    <option value="Não se alimentou">Não se alimentou em casa</option>
+                                    <option value="E-mail dos pais">Informado por e-mail dos pais</option>
+                                    <option value="Outros">Outros motivos</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-6" id="atraso-reason-custom-group" style="display:none;">
+                                <label for="atraso-reason-custom">Especifique o Motivo*</label>
+                                <input type="text" id="atraso-reason-custom" placeholder="Digite o motivo do atraso...">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="atraso-guardian">Nome do Responsável que Trouxe*</label>
+                                <input type="text" id="atraso-guardian" placeholder="Nome completo do responsável...">
+                            </div>
+                            <div class="form-group col-6">
+                                <label for="atraso-staff">Funcionário Registrante*</label>
+                                <input type="text" id="atraso-staff" readonly class="readonly-input">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="atraso-obs">Observações Adicionais</label>
+                            <textarea id="atraso-obs" rows="2" placeholder="Algum detalhe relevante sobre a recepção da criança..."></textarea>
+                        </div>
+                        
+                        <!-- Painel de Assinatura -->
+                        <div class="signature-section">
+                            <label>Assinatura Digital do Responsável*</label>
+                            <div class="signature-canvas-wrapper">
+                                <canvas id="atraso-signature-canvas" width="450" height="150"></canvas>
+                                <button type="button" class="clear-sig-btn" id="btn-clear-sig-atraso">Limpar</button>
+                            </div>
+                            <span class="signature-help">Use o mouse ou o dedo na tela para assinar acima.</span>
+                        </div>
+                    </div>
+
+                    <!-- ============================================== -->
+                    <!-- CAMPOS DINÂMICOS: SAÍDA ANTECIPADA -->
+                    <!-- ============================================== -->
+                    <div class="dynamic-fields-section" id="fields-saida" style="display:none;">
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="saida-date">Data da Retirada*</label>
+                                <input type="date" id="saida-date">
+                            </div>
+                            <div class="form-group col-6">
+                                <label for="saida-time">Hora da Saída*</label>
+                                <input type="time" id="saida-time">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="saida-reason">Motivo da Saída*</label>
+                                <select id="saida-reason">
+                                    <option value="">Selecione um motivo</option>
+                                    <option value="Consulta médica / Tratamento">Consulta médica / Tratamento</option>
+                                    <option value="Viagem familiar">Viagem / Compromisso familiar</option>
+                                    <option value="Mal-estar / Febre na escola">Criança indisposta / Mal-estar na escola</option>
+                                    <option value="Recomendação terapêutica">Recomendação psicológica/terapêutica</option>
+                                    <option value="Outros">Outros motivos</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-6">
+                                <label for="saida-guardian">Responsável pela Retirada*</label>
+                                <input type="text" id="saida-guardian" placeholder="Nome completo de quem retirou...">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label>Haverá Retorno no Mesmo Dia?</label>
+                                <div class="toggle-buttons">
+                                    <label class="toggle-btn" id="btn-saida-retorno-sim">
+                                        <input type="radio" name="saida-retorno" value="sim"> Sim
+                                    </label>
+                                    <label class="toggle-btn active" id="btn-saida-retorno-nao">
+                                        <input type="radio" name="saida-retorno" value="nao" checked> Não
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group col-6" id="saida-return-time-group" style="display:none;">
+                                <label for="saida-return-time">Horário Previsto de Retorno*</label>
+                                <input type="time" id="saida-return-time">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="saida-obs">Observações Adicionais</label>
+                            <textarea id="saida-obs" rows="2" placeholder="Detalhes sobre a saída antecipada..."></textarea>
+                        </div>
+                        
+                        <!-- Painel de Assinatura -->
+                        <div class="signature-section">
+                            <label>Assinatura Digital de Autorização de Saída*</label>
+                            <div class="signature-canvas-wrapper">
+                                <canvas id="saida-signature-canvas" width="450" height="150"></canvas>
+                                <button type="button" class="clear-sig-btn" id="btn-clear-sig-saida">Limpar</button>
+                            </div>
+                            <span class="signature-help">O responsável que retira a criança deve assinar acima.</span>
+                        </div>
+                    </div>
+
+                    <!-- ============================================== -->
+                    <!-- CAMPOS DINÂMICOS: ATESTADOS -->
+                    <!-- ============================================== -->
+                    <div class="dynamic-fields-section" id="fields-atestado" style="display:none;">
+                        <div class="form-row">
+                            <div class="form-group col-4">
+                                <label for="atestado-reg-date">Data de Registro*</label>
+                                <input type="date" id="atestado-reg-date" readonly class="readonly-input">
+                            </div>
+                            <div class="form-group col-4">
+                                <label for="atestado-start-date">Data Inicial do Afastamento*</label>
+                                <input type="date" id="atestado-start-date">
+                            </div>
+                            <div class="form-group col-4">
+                                <label for="atestado-days">Qtd. Dias Afastados*</label>
+                                <input type="number" id="atestado-days" min="1" max="60" value="1">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-3">
+                                <label for="atestado-cid">Código CID (Opcional)</label>
+                                <input type="text" id="atestado-cid" placeholder="Ex: J11, A09">
+                            </div>
+                            <div class="form-group col-5">
+                                <label for="atestado-reason">Diagnóstico / Sintomas*</label>
+                                <select id="atestado-reason">
+                                    <option value="">Selecione o sintoma/diagnóstico</option>
+                                    <option value="Gripe / Resfriado comum">Gripe / Resfriado comum</option>
+                                    <option value="Gastroenterite / Vômito / Diarreia">Gastroenterite / Vômito / Diarreia</option>
+                                    <option value="Febre em investigação">Febre em investigação</option>
+                                    <option value="Conjuntivite infecciosa">Conjuntivite infecciosa</option>
+                                    <option value="Catapora / Varicela">Catapora / Varicela</option>
+                                    <option value="Bronquite / Crise Respiratória">Bronquite / Crise Respiratória</option>
+                                    <option value="Otite média aguda">Otite média aguda</option>
+                                    <option value="Outros">Outros diagnósticos médicos</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-4">
+                                <label for="atestado-end-date">Data Prevista de Retorno</label>
+                                <input type="date" id="atestado-end-date" readonly class="readonly-input" placeholder="Cálculo automático">
+                            </div>
+                        </div>
+                        
+                        <!-- Simulação de Upload de Arquivo / Foto -->
+                        <div class="form-group">
+                            <label>Documento do Atestado (Foto ou PDF)*</label>
+                            <div class="atestado-upload-box" id="atestado-upload-box">
+                                <i data-lucide="upload-cloud" class="upload-icon"></i>
+                                <span class="upload-text">Clique ou arraste a foto do atestado aqui</span>
+                                <span class="upload-hint">Formatos suportados: PNG, JPG (Simulação de Escaneamento)</span>
+                                <input type="file" id="atestado-file-input" style="display:none;" accept="image/*">
+                            </div>
+                            <!-- Preview da Imagem -->
+                            <div class="atestado-preview-container" id="atestado-preview-container" style="display:none;">
+                                <div class="preview-header">
+                                    <span>Atestado_Digitalizado.jpg</span>
+                                    <button type="button" class="remove-preview-btn" id="btn-remove-atestado-preview">Excluir</button>
+                                </div>
+                                <div class="preview-img-box">
+                                    <img src="" id="atestado-preview-img" alt="Atestado Escaneado">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="atestado-obs">Recomendações e Observações Médicas</label>
+                            <textarea id="atestado-obs" rows="2" placeholder="Ex: Ministrar medicação às 14h, restrição de atividades físicas, etc."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- ============================================== -->
+                    <!-- CAMPOS DINÂMICOS: FALTA -->
+                    <!-- ============================================== -->
+                    <div class="dynamic-fields-section" id="fields-falta" style="display:none;">
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="falta-date">Data da Falta*</label>
+                                <input type="date" id="falta-date">
+                            </div>
+                            <div class="form-group col-6">
+                                <label for="falta-reason">Motivo da Falta*</label>
+                                <select id="falta-reason">
+                                    <option value="">Selecione um motivo</option>
+                                    <option value="Doença / Indisposição física">Doença / Indisposição física</option>
+                                    <option value="Compromisso familiar / Viagem">Compromisso familiar / Viagem</option>
+                                    <option value="Logística familiar / Transporte">Dificuldade de transporte / Logística</option>
+                                    <option value="Condições climáticas / Chuva forte">Condições climáticas / Chuva forte</option>
+                                    <option value="Sem justificativa declarada">Não informado pelos responsáveis</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label>Falta Justificada pelo Responsável?</label>
+                                <div class="toggle-buttons">
+                                    <label class="toggle-btn" id="btn-falta-just-sim">
+                                        <input type="radio" name="falta-justificada" value="sim"> Sim
+                                    </label>
+                                    <label class="toggle-btn active" id="btn-falta-just-nao">
+                                        <input type="radio" name="falta-justificada" value="nao" checked> Não
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group col-6">
+                                <label>Houve Aviso Prévio dos Pais?</label>
+                                <div class="toggle-buttons">
+                                    <label class="toggle-btn" id="btn-falta-aviso-sim">
+                                        <input type="radio" name="falta-aviso" value="sim"> Sim
+                                    </label>
+                                    <label class="toggle-btn active" id="btn-falta-aviso-nao">
+                                        <input type="radio" name="falta-aviso" value="nao" checked> Não
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="falta-obs">Observações sobre a Falta</label>
+                            <textarea id="falta-obs" rows="2" placeholder="Contato telefônico feito, e-mail recebido, etc..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- ============================================== -->
+                    <!-- CAMPOS DINÂMICOS: SALA DE AMAMENTAÇÃO -->
+                    <!-- ============================================== -->
+                    <div class="dynamic-fields-section" id="fields-amamentacao" style="display:none;">
+                        <div class="form-row">
+                            <div class="form-group col-4">
+                                <label for="amam-date">Data da Utilização*</label>
+                                <input type="date" id="amam-date">
+                            </div>
+                            <div class="form-group col-4">
+                                <label for="amam-time-in">Hora de Entrada*</label>
+                                <input type="time" id="amam-time-in">
+                            </div>
+                            <div class="form-group col-4">
+                                <label for="amam-time-out">Hora de Saída*</label>
+                                <input type="time" id="amam-time-out">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="amam-guardian">Responsável Presente*</label>
+                                <input type="text" id="amam-guardian" placeholder="Nome da mãe ou responsável presente...">
+                            </div>
+                            <div class="form-group col-6">
+                                <label>Tempo de Permanência</label>
+                                <input type="text" id="amam-duration-display" readonly class="readonly-input text-bold" placeholder="Calculado ao salvar">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="amam-obs">Observações / Intercorrências</label>
+                            <textarea id="amam-obs" rows="2" placeholder="Ex: Consumo adequado de leite, sono pós-mamada, etc."></textarea>
+                        </div>
+                    </div>
+
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="secondary-btn" data-close="occurrence-modal">Cancelar</button>
+                    <button type="submit" class="primary-btn" id="btn-save-occurrence">Salvar Registro</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- ============================================== -->
+    <!-- MODAL: VISUALIZAÇÃO DE REGISTRO E ASSINATURA/PDF -->
+    <!-- ============================================== -->
+    <div class="modal-overlay" id="view-record-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Comprovante de Ocorrência</h2>
+                <button class="modal-close-btn" data-close="view-record-modal">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="view-record-modal-body">
+                <!-- Preenchido por JS -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="secondary-btn" data-close="view-record-modal">Fechar</button>
+                <button type="button" class="primary-btn" id="btn-print-single-record">
+                    <i data-lucide="printer"></i> Imprimir Comprovante
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- SCRIPTS EXTERNOS (CDNs Confiáveis) -->
+    <!-- ============================================== -->
+    <!-- Chart.js para os Gráficos Animados -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons para os Ícones Modernos -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- jsPDF para Exportação de Relatórios em PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- SheetJS (XLSX) para Exportação de Relatórios em Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <!-- JavaScript Customizado do Sistema -->
+    <script src="app.js"></script>
+</body>
+</html>
