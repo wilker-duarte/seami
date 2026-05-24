@@ -1,0 +1,5 @@
+node_modules
+seami.db
+*.log
+migrate-*.js
+database.js
