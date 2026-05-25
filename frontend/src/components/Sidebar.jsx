@@ -150,7 +150,7 @@ export default function Sidebar({ activeTab, activeModule, setActiveTab, setActi
           <div className="user-info">
             <span className="user-name">{activeUser.name || 'Coord. Ana Clara'}</span>
             <span className="user-role-badge">
-              {activeUser.role === 'diretora' ? 'Diretoria' : activeUser.role === 'pedagoga' ? 'Pedagogia' : 'Auxiliar'}
+              {activeUser.role === 'diretora' ? 'Secretaria' : activeUser.role === 'pedagoga' ? 'Pedagogia' : 'Auxiliar'}
             </span>
           </div>
         </div>

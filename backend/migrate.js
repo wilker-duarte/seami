@@ -220,6 +220,15 @@ async function executeMigration() {
   
   const cleanStud = await supabase.from('students').delete().neq('id', '');
   if (cleanStud.error) throw cleanStud.error;
+
+  try {
+    const cleanStaff = await supabase.from('staff').delete().neq('id', '');
+    if (cleanStaff.error) {
+      console.warn('\n[Aviso] A tabela "staff" não existe ou não pôde ser limpa no Supabase. Para usar recursos de equipe dinâmicos, execute o script SQL em supabase_schema.sql.');
+    }
+  } catch (err) {
+    console.warn('\n[Aviso] Falha ao tentar limpar a tabela "staff" no Supabase. Continuando...');
+  }
   
   console.log('Tabelas no Supabase prontas e vazias.');
 
@@ -562,12 +571,30 @@ async function executeMigration() {
   if (!settingsMapObj.theme) defaultSettings.push({ key: 'theme', value: 'light' });
   if (!settingsMapObj.activeRole) {
     defaultSettings.push({ key: 'activeRole', value: 'diretora' });
-    defaultSettings.push({ key: 'activeUserName', value: 'Diretora Ana Clara' });
-    defaultSettings.push({ key: 'activeUserAvatar', value: '👩', value: '👩‍💼' });
+    defaultSettings.push({ key: 'activeUserName', value: 'Secretária Ana Clara' });
+    defaultSettings.push({ key: 'activeUserAvatar', value: '👩‍💼' });
   }
 
   if (defaultSettings.length > 0) {
     await supabase.from('settings').insert(defaultSettings);
+  }
+
+  // Semeia funcionários iniciais
+  console.log('Semeando equipe inicial...');
+  const defaultStaff = [
+    { id: 'staff_1', name: 'Secretária Ana Clara', role: 'diretora', avatar: '👩‍💼', desc: 'Acesso total e configurações' },
+    { id: 'staff_2', name: 'Pedagoga Marina', role: 'pedagoga', avatar: '👩‍🏫', desc: 'Insights e relatórios pedagógicos' },
+    { id: 'staff_3', name: 'Auxiliar Jéssica', role: 'auxiliar', avatar: '👩', desc: 'Apenas registro de ocorrências' }
+  ];
+  try {
+    const { error: staffErr } = await supabase.from('staff').insert(defaultStaff);
+    if (staffErr) {
+      console.warn('[Aviso] Não foi possível semear a tabela "staff":', staffErr.message);
+    } else {
+      console.log('Equipe inicial semeada com sucesso.');
+    }
+  } catch (err) {
+    console.warn('[Aviso] Falha ao tentar semear equipe no Supabase. Continuando...');
   }
 
   console.log('\n==================================================');

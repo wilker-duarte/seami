@@ -47,7 +47,11 @@ import {
   saveSettings, 
   wipeHistory, 
   resetDatabase, 
-  seedDemoData 
+  seedDemoData,
+  getStaff,
+  saveStaff,
+  deleteStaff,
+  deleteStudent
 } from './supabaseClient';
 
 export default function App() {
@@ -61,7 +65,12 @@ export default function App() {
   const [students, setStudents] = useState([]);
   const [occurrences, setOccurrences] = useState([]);
   const [attendanceList, setAttendanceList] = useState([]);
-  const [activeUser, setActiveUser] = useState({ role: 'diretora', name: 'Diretora Ana Clara', avatar: '👩‍💼' });
+  const [staffList, setStaffList] = useState([
+    { id: 'staff_1', name: 'Secretária Ana Clara', role: 'diretora', avatar: '👩‍💼', desc: 'Acesso total e configurações' },
+    { id: 'staff_2', name: 'Pedagoga Marina', role: 'pedagoga', avatar: '👩‍🏫', desc: 'Insights e relatórios pedagógicos' },
+    { id: 'staff_3', name: 'Auxiliar Jéssica', role: 'auxiliar', avatar: '👩', desc: 'Apenas registro de ocorrências' }
+  ]);
+  const [activeUser, setActiveUser] = useState({ role: 'diretora', name: 'Secretária Ana Clara', avatar: '👩‍💼' });
   const [isDark, setIsDark] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -73,6 +82,10 @@ export default function App() {
   const [isImportDragging, setIsImportDragging] = useState(false);
   const importFileInputRef = useRef(null);
   const importDropZoneRef = useRef(null);
+  
+  const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
+  const [currentEditStaff, setCurrentEditStaff] = useState(null);
+  const [staffForm, setStaffForm] = useState({ name: '', role: 'diretora', avatar: '👩‍💼', desc: '' });
   
   const [isOccurrenceModalOpen, setIsOccurrenceModalOpen] = useState(false);
   const [selectedStudentForOcc, setSelectedStudentForOcc] = useState(null);
@@ -317,22 +330,26 @@ export default function App() {
   const loadAllData = async () => {
     try {
       setIsLoading(true);
-      const [studentsData, occurrencesData, settingsData, attendanceData] = await Promise.all([
+      const [studentsData, occurrencesData, settingsData, attendanceData, staffData] = await Promise.all([
         getStudents(),
         getOccurrences(),
         getSettings(),
-        getAttendance()
+        getAttendance(),
+        getStaff()
       ]);
 
       setStudents(studentsData || []);
       setOccurrences(occurrencesData || []);
       setAttendanceList(attendanceData || []);
+      if (staffData && staffData.length > 0) {
+        setStaffList(staffData);
+      }
 
       // Carrega settings se persistidas no Supabase
       if (settingsData && settingsData.activeRole) {
         setActiveUser({
           role: settingsData.activeRole,
-          name: settingsData.activeUserName || 'Diretora Ana Clara',
+          name: settingsData.activeUserName || 'Secretária Ana Clara',
           avatar: settingsData.activeUserAvatar || '👩‍💼'
         });
       }
@@ -434,6 +451,82 @@ export default function App() {
       setStudents(students.map(s => s.id === updated.id ? updated : s));
     } catch (err) {
       console.error('Erro ao alterar status do aluno:', err);
+    }
+  };
+
+  const handleDeleteStudent = async (studentId) => {
+    const student = students.find(s => s.id === studentId);
+    const studentName = student ? student.name : 'este aluno';
+    if (!window.confirm(`PERIGO: Tem certeza de que deseja DELETAR permanentemente o aluno "${studentName}"? Isso removerá o cadastro e todas as presenças/ocorrências associadas. Esta ação não pode ser desfeita.`)) return;
+    try {
+      await deleteStudent(studentId);
+      setStudents(students.filter(s => s.id !== studentId));
+      alert('Aluno excluído com sucesso!');
+    } catch (err) {
+      console.error('Erro ao deletar aluno:', err);
+      alert('Erro ao excluir aluno do Supabase.');
+    }
+  };
+
+  // ==========================================================================
+  // CRUD EQUIPE / FUNCIONÁRIOS (Supabase)
+  // ==========================================================================
+
+  const handleOpenStaffModal = (member = null) => {
+    setCurrentEditStaff(member);
+    if (member) {
+      setStaffForm({
+        name: member.name,
+        role: member.role,
+        avatar: member.avatar || '👩‍💼',
+        desc: member.desc || ''
+      });
+    } else {
+      setStaffForm({ name: '', role: 'diretora', avatar: '👩‍💼', desc: '' });
+    }
+    setIsStaffModalOpen(true);
+  };
+
+  const handleSaveStaff = async (e) => {
+    e.preventDefault();
+    if (!staffForm.name.trim() || !staffForm.role) {
+      alert('Nome e nível de acesso são obrigatórios.');
+      return;
+    }
+
+    try {
+      const payload = {
+        id: currentEditStaff ? currentEditStaff.id : undefined,
+        name: staffForm.name.trim(),
+        role: staffForm.role,
+        avatar: staffForm.avatar || '👩‍💼',
+        desc: staffForm.desc.trim()
+      };
+      
+      const saved = await saveStaff(payload);
+      if (currentEditStaff) {
+        setStaffList(staffList.map(s => s.id === saved.id ? saved : s));
+        alert('Cadastro de funcionário atualizado!');
+      } else {
+        setStaffList([...staffList, saved]);
+        alert('Novo funcionário adicionado com sucesso!');
+      }
+      setIsStaffModalOpen(false);
+    } catch (err) {
+      console.error('Erro ao salvar funcionário:', err);
+      alert('Erro ao salvar registro de funcionário.');
+    }
+  };
+
+  const handleDeleteStaffMember = async (staffId) => {
+    if (!window.confirm('Tem certeza que deseja remover este funcionário?')) return;
+    try {
+      await deleteStaff(staffId);
+      setStaffList(staffList.filter(s => s.id !== staffId));
+      alert('Funcionário removido com sucesso!');
+    } catch (err) {
+      console.error('Erro ao remover funcionário:', err);
+      alert('Erro ao remover funcionário.');
     }
   };
 
@@ -1403,6 +1496,7 @@ export default function App() {
           setIsSidebarOpen={setIsSidebarOpen}
           onQuickAction={() => handleOpenOccurrenceModal(null, 'atraso')}
           onSelectStudentOccurrence={handleSelectStudentOccurrenceFromHeader}
+          staffList={staffList}
         />
         
         {/* ==================================================================
@@ -1857,9 +1951,24 @@ export default function App() {
                                 </button>
                                 <button className="row-action-btn" onClick={() => handleOpenStudentModal(st)} title="Editar">✏️</button>
                                 {activeUser.role === 'diretora' && (
-                                  <button className="row-action-btn delete" onClick={() => handleToggleStudentActive(st.id)} title={st.active ? 'Inativar' : 'Reativar'}>
-                                    {st.active ? <Trash2 size={16} /> : <Undo size={16} />}
-                                  </button>
+                                  <>
+                                    <button 
+                                      className="row-action-btn" 
+                                      onClick={() => handleToggleStudentActive(st.id)} 
+                                      title={st.active ? 'Inativar Aluno' : 'Reativar Aluno'}
+                                      style={{ color: st.active ? 'var(--slate-500)' : 'var(--emerald-600)', borderColor: st.active ? 'var(--slate-200)' : 'var(--emerald-100)' }}
+                                    >
+                                      {st.active ? '🚫' : '🔄'}
+                                    </button>
+                                    <button 
+                                      className="row-action-btn delete" 
+                                      onClick={() => handleDeleteStudent(st.id)} 
+                                      title="Excluir Permanentemente"
+                                      style={{ color: 'var(--color-faltas)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -2291,10 +2400,10 @@ export default function App() {
             ================================================================== */}
         {activeTab === 'settings' && activeUser.role !== 'auxiliar' && (
           <section className="panel-section active">
-            <div className="settings-grid">
+            <div className="settings-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px' }}>
               <div className="settings-card">
-                <h3>Banco de Dados & Persistência Local SQLite</h3>
-                <p className="settings-desc">Controle a persistência das ocorrências e do simulador no servidor local.</p>
+                <h3>Banco de Dados Supabase (Nuvem)</h3>
+                <p className="settings-desc">Controle a persistência das ocorrências e do simulador na nuvem do Supabase.</p>
                 
                 <div className="settings-actions">
                   <div className="settings-action-row">
@@ -2308,33 +2417,78 @@ export default function App() {
                   <div className="settings-action-row">
                     <div className="action-info">
                       <span className="action-title">Limpar Histórico de Ocorrências</span>
-                      <span className="action-desc text-danger">Remove todos os lançamentos (atrasos, faltas, etc.) mantendo intacto apenas o cadastro de alunos do SQLite.</span>
+                      <span className="action-desc text-danger">Remove todos os lançamentos (atrasos, faltas, etc.) mantendo intacto apenas o cadastro de alunos do Supabase.</span>
                     </div>
                     <button className="danger-btn" onClick={handleWipeHistory}>Limpar Histórico</button>
                   </div>
                   
                   <div className="settings-action-row">
                     <div className="action-info">
-                      <span className="action-title">Reiniciar Todo o Banco SQLite</span>
-                      <span className="action-desc text-danger">Zera todas as tabelas e re-semeia a base inicial limpa de 70 alunos originais.</span>
+                      <span className="action-title">Reiniciar Todo o Banco Supabase</span>
+                      <span className="action-desc text-danger">Zera todas as tabelas (alunos, ocorrências, chamadas e equipe) e re-semeia a base inicial limpa de alunos e equipe.</span>
                     </div>
                     <button className="danger-btn" onClick={handleResetEntireApp}>Zerar Sistema</button>
                   </div>
                 </div>
               </div>
               
-              <div className="settings-card">
-                <h3>Níveis de Acesso e Permissões Simuladas</h3>
-                <p className="settings-desc">Mude de perfil no seletor do cabeçalho para ver o comportamento do sistema:</p>
-                
-                <div className="settings-info-box">
-                  <ul className="permissions-list">
-                    <li><strong>Diretora:</strong> Controle administrativo irrestrito (CRUD total de alunos, exclusão de histórico de ocorrências e redefinições de SQLite).</li>
-                    <li><strong>Pedagogia:</strong> Visualização de relatórios, gráficos e abas pedagógicas de IA. Pode lançar ocorrências diárias. Não pode inativar alunos ou redefinir a base.</li>
-                    <li><strong>Auxiliar:</strong> Foco em rapidez. Apenas tela de Dashboard simplificada, listagem de ocorrências e adição rápida. Aba de configurações administrativa oculta.</li>
-                  </ul>
+              <div className="settings-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <h3>Níveis de Acesso e Permissões Simuladas</h3>
+                  <p className="settings-desc">Mude de perfil no seletor do cabeçalho para ver o comportamento do sistema:</p>
+                  
+                  <div className="settings-info-box" style={{ marginTop: '12px' }}>
+                    <ul className="permissions-list" style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <li><strong>Secretária (Diretoria):</strong> Controle administrativo irrestrito (CRUD total de alunos, controle dinâmico da equipe de secretaria/pedagogia/auxiliares, exclusão de histórico de ocorrências e redefinições de banco de dados).</li>
+                      <li><strong>Pedagogia:</strong> Visualização de relatórios, gráficos e abas pedagógicas de IA. Pode lançar ocorrências diárias. Não pode inativar alunos, gerenciar a equipe ou redefinir a base.</li>
+                      <li><strong>Auxiliar:</strong> Foco em rapidez. Apenas tela de Dashboard simplificada, listagem de ocorrências e adição rápida. Aba de configurações administrativa oculta.</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
+
+              {activeUser.role === 'diretora' && (
+                <div className="settings-card" style={{ gridColumn: '1 / -1' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--slate-100)', paddingBottom: '12px' }}>
+                    <div>
+                      <h3 style={{ margin: 0 }}>Gestão de Equipe (Secretaria)</h3>
+                      <p className="settings-desc" style={{ margin: 0 }}>Adicione, edite ou remova membros da equipe de secretaria, pedagogia e auxiliares com acessos diferenciados.</p>
+                    </div>
+                    <button className="primary-btn" onClick={() => handleOpenStaffModal()} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Plus size={16} />
+                      <span>Adicionar Funcionário</span>
+                    </button>
+                  </div>
+                  
+                  <div className="staff-list-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
+                    {staffList.map(member => (
+                      <div key={member.id} className="staff-member-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '16px', backgroundColor: 'var(--slate-50)', borderRadius: '12px', border: '1px solid var(--slate-200)', transition: 'transform 0.2s, box-shadow 0.2s' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
+                          <span style={{ fontSize: '32px', padding: '8px', backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>{member.avatar || '👩‍💼'}</span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--slate-800)' }}>{member.name}</span>
+                            <span className={`role-badge badge-${member.role === 'diretora' ? 'diretora' : member.role === 'pedagoga' ? 'pedagoga' : 'auxiliar'}`} style={{ alignSelf: 'flex-start', fontSize: '10px', padding: '2px 8px', borderRadius: '4px' }}>
+                              {member.role === 'diretora' ? 'Secretária' : member.role === 'pedagoga' ? 'Pedagogia' : 'Auxiliar'}
+                            </span>
+                            {member.desc && <span style={{ fontSize: '12px', color: 'var(--slate-500)', marginTop: '4px', fontStyle: 'italic' }}>"{member.desc}"</span>}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--slate-100)', paddingTop: '12px' }}>
+                          <button className="secondary-btn" onClick={() => handleOpenStaffModal(member)} style={{ padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            Editar
+                          </button>
+                          {staffList.length > 1 && (
+                            <button className="danger-btn" onClick={() => handleDeleteStaffMember(member.id)} style={{ padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Trash2 size={12} />
+                              <span>Excluir</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -2365,6 +2519,83 @@ export default function App() {
           </section>
         )}
       </main>
+
+      {/* ==================================================================
+          MODAL: CADASTRAR/EDITAR MEMBRO DA EQUIPE
+          ================================================================== */}
+      {isStaffModalOpen && (
+        <div className="modal-overlay active">
+          <div className="modal-card">
+            <div className="modal-header">
+              <h2>{currentEditStaff ? 'Editar Integrante da Equipe' : 'Adicionar Novo Funcionário'}</h2>
+              <button className="modal-close-btn" onClick={() => setIsStaffModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSaveStaff}>
+              <div className="form-body">
+                <div className="form-group">
+                  <label>Nome Completo*</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="Ex: Secretário João Silva"
+                    value={staffForm.name}
+                    onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })}
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Nível de Acesso (Cargo)*</label>
+                  <select 
+                    required
+                    value={staffForm.role}
+                    onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
+                  >
+                    <option value="diretora">Secretária (Acesso administrativo total)</option>
+                    <option value="pedagoga">Pedagogia (Acesso a relatórios e IA)</option>
+                    <option value="auxiliar">Auxiliar (Lançamento rápido e simplificado)</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Avatar / Ícone Emoji*</label>
+                  <select 
+                    required
+                    value={staffForm.avatar}
+                    onChange={(e) => setStaffForm({ ...staffForm, avatar: e.target.value })}
+                  >
+                    <option value="👩‍💼">👩‍💼 Secretária (Feminino)</option>
+                    <option value="👨‍💼">👨‍💼 Secretário (Masculino)</option>
+                    <option value="👩‍🏫">👩‍🏫 Pedagoga / Professora</option>
+                    <option value="👨‍🏫">👨‍🏫 Pedagogo / Professor</option>
+                    <option value="👩">👩 Auxiliar / Tia</option>
+                    <option value="👨">👨 Auxiliar / Tio</option>
+                    <option value="🧸">🧸 Mascote</option>
+                    <option value="✨">✨ Estrela</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Descrição Curta (Opcional)</label>
+                  <input 
+                    type="text" 
+                    placeholder="Ex: Acesso total e configurações"
+                    value={staffForm.desc}
+                    onChange={(e) => setStaffForm({ ...staffForm, desc: e.target.value })}
+                  />
+                </div>
+              </div>
+              
+              <div className="modal-footer">
+                <button type="button" className="secondary-btn" onClick={() => setIsStaffModalOpen(false)}>Cancelar</button>
+                <button type="submit" className="primary-btn">Salvar Integrante</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ==================================================================
           MODAL: CADASTRAR/EDITAR ALUNO

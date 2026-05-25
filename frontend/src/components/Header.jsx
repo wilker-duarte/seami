@@ -18,7 +18,8 @@ export default function Header({
   setActiveUser, 
   setIsSidebarOpen, 
   onQuickAction,
-  onSelectStudentOccurrence
+  onSelectStudentOccurrence,
+  staffList = []
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -108,7 +109,7 @@ export default function Header({
   };
 
   const roleLabels = {
-    diretora: 'Diretoria',
+    diretora: 'Secretaria',
     pedagoga: 'Pedagogia',
     auxiliar: 'Auxiliar'
   };
@@ -177,31 +178,36 @@ export default function Header({
           </button>
           
           {isRoleDropdownOpen && (
-            <div className="role-dropdown-menu active">
-              <a 
-                href="#" 
-                className={`role-option ${activeUser.role === 'diretora' ? 'active' : ''}`}
-                onClick={(e) => { e.preventDefault(); handleRoleSelect('diretora', 'Diretora Ana Clara', '👩‍💼'); }}
-              >
-                <span className="role-badge badge-diretora">Diretoria</span>
-                <span className="role-desc">Acesso total e configurações</span>
-              </a>
-              <a 
-                href="#" 
-                className={`role-option ${activeUser.role === 'pedagoga' ? 'active' : ''}`}
-                onClick={(e) => { e.preventDefault(); handleRoleSelect('pedagoga', 'Pedagoga Marina', '👩‍🏫'); }}
-              >
-                <span className="role-badge badge-pedagoga">Pedagogia</span>
-                <span className="role-desc">Insights e relatórios pedagógicos</span>
-              </a>
-              <a 
-                href="#" 
-                className={`role-option ${activeUser.role === 'auxiliar' ? 'active' : ''}`}
-                onClick={(e) => { e.preventDefault(); handleRoleSelect('auxiliar', 'Auxiliar Jéssica', '👩'); }}
-              >
-                <span className="role-badge badge-auxiliar">Auxiliar</span>
-                <span className="role-desc">Apenas registro de ocorrências</span>
-              </a>
+            <div className="role-dropdown-menu active" style={{ minWidth: '240px' }}>
+              {staffList.map(member => (
+                <a 
+                  key={member.id}
+                  href="#" 
+                  className={`role-option ${activeUser.name === member.name && activeUser.role === member.role ? 'active' : ''}`}
+                  onClick={(e) => { 
+                    e.preventDefault(); 
+                    handleRoleSelect(member.role, member.name, member.avatar); 
+                  }}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px', padding: '10px 14px' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <span className={roleBadgeClass[member.role] || 'role-badge'}>
+                      {roleLabels[member.role] || 'Membro'}
+                    </span>
+                    <span style={{ fontSize: '18px' }}>{member.avatar}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                    <span style={{ fontWeight: '600', fontSize: '13px', color: 'var(--slate-800)' }}>
+                      {member.name}
+                    </span>
+                    {member.desc && (
+                      <span style={{ fontSize: '11px', color: 'var(--slate-500)', lineHeight: '1.2' }}>
+                        {member.desc}
+                      </span>
+                    )}
+                  </div>
+                </a>
+              ))}
             </div>
           )}
         </div>

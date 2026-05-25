@@ -72,6 +72,18 @@ export async function toggleStudentActive(studentId) {
   return data;
 }
 
+export async function deleteStudent(studentId) {
+  const { error } = await supabase
+    .from('students')
+    .delete()
+    .eq('id', studentId);
+  if (error) {
+    console.error('[Supabase] Erro ao deletar aluno:', error);
+    throw error;
+  }
+  return true;
+}
+
 export async function saveStudentBulk(studentsArray) {
   const records = studentsArray.map(s => ({
     id: s.id || `student_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
@@ -273,16 +285,26 @@ export async function resetDatabase() {
   const deleteOcc = supabase.from('occurrences').delete().neq('id', '');
   const deleteStud = supabase.from('students').delete().neq('id', '');
   const deleteSet = supabase.from('settings').delete().neq('id', '');
+  const deleteStf = supabase.from('staff').delete().neq('id', '');
   
-  await Promise.all([deleteOcc, deleteStud, deleteSet]);
+  await Promise.all([deleteOcc, deleteStud, deleteSet, deleteStf]);
 
   // Restaura configurações padrões iniciais
   await saveSettings({
     theme: 'light',
     activeRole: 'diretora',
-    activeUserName: 'Diretora Ana Clara',
+    activeUserName: 'Secretária Ana Clara',
     activeUserAvatar: '👩‍💼'
   });
+
+  // Restaura funcionários padrões
+  const defaultStaff = [
+    { id: 'staff_1', name: 'Secretária Ana Clara', role: 'diretora', avatar: '👩‍💼', desc: 'Acesso total e configurações' },
+    { id: 'staff_2', name: 'Pedagoga Marina', role: 'pedagoga', avatar: '👩‍🏫', desc: 'Insights e relatórios pedagógicos' },
+    { id: 'staff_3', name: 'Auxiliar Jéssica', role: 'auxiliar', avatar: '👩', desc: 'Apenas registro de ocorrências' }
+  ];
+  await supabase.from('staff').insert(defaultStaff);
+
   return true;
 }
 
@@ -477,4 +499,79 @@ export async function seedDemoData() {
     throw error;
   }
   return records.length;
+}
+
+// ==========================================
+// MÉTODOS DE EQUIPE / FUNCIONÁRIOS (STAFF)
+// ==========================================
+
+export async function getStaff() {
+  try {
+    const { data, error } = await supabase
+      .from('staff')
+      .select('*')
+      .order('name');
+    if (error) {
+      console.warn('[Supabase] Tabela staff não pôde ser lida, usando equipe de backup:', error);
+      return [
+        { id: 'staff_1', name: 'Secretária Ana Clara', role: 'diretora', avatar: '👩‍💼', desc: 'Acesso total e configurações' },
+        { id: 'staff_2', name: 'Pedagoga Marina', role: 'pedagoga', avatar: '👩‍🏫', desc: 'Insights e relatórios pedagógicos' },
+        { id: 'staff_3', name: 'Auxiliar Jéssica', role: 'auxiliar', avatar: '👩', desc: 'Apenas registro de ocorrências' }
+      ];
+    }
+    return data && data.length > 0 ? data : [
+      { id: 'staff_1', name: 'Secretária Ana Clara', role: 'diretora', avatar: '👩‍💼', desc: 'Acesso total e configurações' },
+      { id: 'staff_2', name: 'Pedagoga Marina', role: 'pedagoga', avatar: '👩‍🏫', desc: 'Insights e relatórios pedagógicos' },
+      { id: 'staff_3', name: 'Auxiliar Jéssica', role: 'auxiliar', avatar: '👩', desc: 'Apenas registro de ocorrências' }
+    ];
+  } catch (err) {
+    console.warn('[Supabase] Falha ao obter equipe, retornando lista padrão.', err);
+    return [
+      { id: 'staff_1', name: 'Secretária Ana Clara', role: 'diretora', avatar: '👩‍💼', desc: 'Acesso total e configurações' },
+      { id: 'staff_2', name: 'Pedagoga Marina', role: 'pedagoga', avatar: '👩‍🏫', desc: 'Insights e relatórios pedagógicos' },
+      { id: 'staff_3', name: 'Auxiliar Jéssica', role: 'auxiliar', avatar: '👩', desc: 'Apenas registro de ocorrências' }
+    ];
+  }
+}
+
+export async function saveStaff(member) {
+  const payload = {
+    id: member.id || `staff_${Date.now()}`,
+    name: member.name,
+    role: member.role,
+    avatar: member.avatar || '👩‍💼',
+    desc: member.desc || ''
+  };
+  try {
+    const { data, error } = await supabase
+      .from('staff')
+      .upsert(payload)
+      .select()
+      .single();
+    if (error) {
+      console.warn('[Supabase] Erro ao salvar funcionário no banco. Simulando local.', error);
+      return payload;
+    }
+    return data;
+  } catch (err) {
+    console.warn('[Supabase] Falha ao salvar funcionário. Simulando local.', err);
+    return payload;
+  }
+}
+
+export async function deleteStaff(id) {
+  try {
+    const { error } = await supabase
+      .from('staff')
+      .delete()
+      .eq('id', id);
+    if (error) {
+      console.warn('[Supabase] Erro ao deletar funcionário no banco. Simulando local.', error);
+      return true;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase] Falha ao deletar funcionário. Simulando local.', err);
+    return true;
+  }
 }

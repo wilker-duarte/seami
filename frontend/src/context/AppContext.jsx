@@ -6,7 +6,7 @@ const AppContext = createContext(null);
 export function AppProvider({ children }) {
   const [activeUser, setActiveUserState] = useState({
     role: 'diretora',
-    name: 'Diretora Ana Clara',
+    name: 'Secretária Ana Clara',
     avatar: '👩‍💼'
   });
   const [isDark, setIsDark] = useState(false);
@@ -27,7 +27,7 @@ export function AppProvider({ children }) {
         if (settingsData && settingsData.activeRole) {
           setActiveUserState({
             role: settingsData.activeRole,
-            name: settingsData.activeUserName || 'Diretora Ana Clara',
+            name: settingsData.activeUserName || 'Secretária Ana Clara',
             avatar: settingsData.activeUserAvatar || '👩‍💼'
           });
         }
