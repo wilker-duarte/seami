@@ -56,6 +56,33 @@ app.post('/api/students', async (req, res) => {
   }
 });
 
+// Cadastrar múltiplos alunos em lote (Importação em Massa)
+app.post('/api/students/bulk', async (req, res) => {
+  const { students } = req.body;
+  if (!students || !Array.isArray(students)) {
+    return res.status(400).json({ error: 'Lista de alunos inválida ou ausente.' });
+  }
+
+  try {
+    const inserted = [];
+    for (const s of students) {
+      const { name, classroom } = s;
+      if (!name || !classroom) continue;
+      
+      const id = `student_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      await run(
+        'INSERT INTO students (id, name, classroom, active) VALUES (?, ?, ?, ?)',
+        [id, name, classroom, 1]
+      );
+      inserted.push({ id, name, classroom, active: true });
+    }
+    res.status(201).json(inserted);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao importar alunos em massa.' });
+  }
+});
+
 // Atualizar dados do aluno
 app.put('/api/students/:id', async (req, res) => {
   const { id } = req.params;
