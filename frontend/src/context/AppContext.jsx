@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-
-export const API_BASE_URL = 'http://localhost:5000/api';
+import { getStudents, getSettings, saveSettings } from '../supabaseClient';
 
 const AppContext = createContext(null);
 
@@ -18,27 +17,25 @@ export function AppProvider({ children }) {
   useEffect(() => {
     const bootstrap = async () => {
       try {
-        const [studentsRes, settingsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/students`),
-          fetch(`${API_BASE_URL}/settings`)
+        const [studentsData, settingsData] = await Promise.all([
+          getStudents(),
+          getSettings()
         ]);
-        const studentsData = await studentsRes.json();
-        const settingsData = await settingsRes.json();
 
-        setStudents(studentsData);
+        setStudents(studentsData || []);
 
-        if (settingsData.activeRole) {
+        if (settingsData && settingsData.activeRole) {
           setActiveUserState({
             role: settingsData.activeRole,
             name: settingsData.activeUserName || 'Diretora Ana Clara',
             avatar: settingsData.activeUserAvatar || '👩‍💼'
           });
         }
-        if (settingsData.theme) {
+        if (settingsData && settingsData.theme) {
           setIsDark(settingsData.theme === 'dark');
         }
       } catch (err) {
-        console.error('[AppContext] Erro ao carregar dados iniciais:', err);
+        console.error('[AppContext] Erro ao carregar dados iniciais do Supabase:', err);
       } finally {
         setIsBootstrapping(false);
       }
@@ -46,7 +43,7 @@ export function AppProvider({ children }) {
     bootstrap();
   }, []);
 
-  // Sincroniza tema com o body e salva no backend
+  // Sincroniza tema com o body e salva no Supabase
   useEffect(() => {
     const body = document.body;
     if (isDark) {
@@ -57,29 +54,21 @@ export function AppProvider({ children }) {
       body.classList.add('light-mode');
     }
     if (!isBootstrapping) {
-      fetch(`${API_BASE_URL}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme: isDark ? 'dark' : 'light' })
-      }).catch(() => {});
+      saveSettings({ theme: isDark ? 'dark' : 'light' }).catch(() => {});
     }
   }, [isDark, isBootstrapping]);
 
-  // Persiste o usuário ativo no backend
+  // Persiste o usuário ativo no Supabase
   const setActiveUser = async (user) => {
     setActiveUserState(user);
     try {
-      await fetch(`${API_BASE_URL}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activeRole: user.role,
-          activeUserName: user.name,
-          activeUserAvatar: user.avatar
-        })
+      await saveSettings({
+        activeRole: user.role,
+        activeUserName: user.name,
+        activeUserAvatar: user.avatar
       });
     } catch (err) {
-      console.error('[AppContext] Erro ao salvar usuário:', err);
+      console.error('[AppContext] Erro ao salvar usuário no Supabase:', err);
     }
   };
 
@@ -103,3 +92,4 @@ export function useAppContext() {
   if (!ctx) throw new Error('useAppContext deve ser usado dentro de <AppProvider>');
   return ctx;
 }
+

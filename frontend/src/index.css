@@ -21,6 +21,9 @@
     --color-primary: #6366f1; /* Roxo Lavanda Principal */
     --color-primary-light: #e0e7ff;
     
+    --brand-primary: #6366f1;
+    --brand-light: #e0e7ff;
+    
     --color-atrasos: #d97706; /* Amarelo Pêssego */
     --color-atrasos-bg: #fef3c7;
     
@@ -78,6 +81,9 @@ body.dark-mode {
     
     --color-primary: #818cf8;
     --color-primary-light: #1e1b4b;
+    
+    --brand-primary: #818cf8;
+    --brand-light: #1e1b4b;
     
     --color-atrasos: #fbbf24;
     --color-atrasos-bg: #2d2208;
@@ -656,6 +662,14 @@ body.dark-mode .badge-auxiliar {
     gap: 24px;
 }
 
+/* Libera o contexto de empilhamento (stacking context) do painel ativo quando há uma modal aberta */
+.panel-section:has(.modal-overlay.active),
+.panel-section:has(div[style*="position: fixed"]) {
+    z-index: 9999 !important;
+    transform: none !important;
+    opacity: 1 !important;
+}
+
 @keyframes fadeSlideIn {
     to {
         opacity: 1;
@@ -956,7 +970,7 @@ body.dark-mode .badge-auxiliar {
 }
 
 .secondary-btn {
-    background-color: var(--bg-input);
+    background-color: var(--bg-card);
     color: var(--text-primary);
     font-weight: 600;
     height: 40px;
@@ -1214,7 +1228,7 @@ body.dark-mode .data-table tbody tr:hover {
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 200;
+    z-index: 9999 !important;
     padding: 16px;
     overflow-y: auto;
 }
@@ -1608,6 +1622,7 @@ body.dark-mode .signature-canvas-wrapper {
     display: flex;
     justify-content: flex-end;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
 /* ==========================================================================
@@ -2324,5 +2339,18 @@ body.dark-mode .settings-action-row {
 @media (max-width: 1024px) {
     .sidebar-toggle-btn {
         display: none !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .modal-footer {
+        flex-direction: column-reverse !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+    }
+    .modal-footer button,
+    .modal-footer a {
+        width: 100% !important;
+        justify-content: center !important;
     }
 }

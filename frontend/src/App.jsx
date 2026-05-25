@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Baby, 
   Clock, 
@@ -34,8 +34,21 @@ import DashboardCharts from './components/DashboardCharts';
 import SignaturePad from './components/SignaturePad';
 import DailyAttendance from './components/DailyAttendance';
 import SeamiControl from './components/SeamiControl';
-
-const API_BASE_URL = 'http://localhost:5000/api';
+import { 
+  getStudents, 
+  saveStudent, 
+  toggleStudentActive, 
+  saveStudentBulk, 
+  getOccurrences, 
+  saveOccurrence, 
+  deleteOccurrence, 
+  getAttendance, 
+  getSettings, 
+  saveSettings, 
+  wipeHistory, 
+  resetDatabase, 
+  seedDemoData 
+} from './supabaseClient';
 
 export default function App() {
   // Estados de Roteamento e Menu
@@ -55,6 +68,11 @@ export default function App() {
   // Estados de Modals
   const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
   const [currentEditStudent, setCurrentEditStudent] = useState(null); // null para cadastro, objeto do aluno para edição
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFileList, setImportFileList] = useState([]); // Alunos importados
+  const [isImportDragging, setIsImportDragging] = useState(false);
+  const importFileInputRef = useRef(null);
+  const importDropZoneRef = useRef(null);
   
   const [isOccurrenceModalOpen, setIsOccurrenceModalOpen] = useState(false);
   const [selectedStudentForOcc, setSelectedStudentForOcc] = useState(null);
@@ -63,10 +81,26 @@ export default function App() {
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState(null);
 
+  const getInitialDashFilters = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const firstDay = `${year}-${month}-01`;
+    const lastDayVal = new Date(year, d.getMonth() + 1, 0).getDate();
+    const lastDay = `${year}-${month}-${String(lastDayVal).padStart(2, '0')}`;
+    return { dateStart: firstDay, dateEnd: lastDay, classroom: '', studentId: '' };
+  };
+
   // Estados de Filtros de Painel
-  const [dashFilters, setDashFilters] = useState({ dateStart: '', dateEnd: '', classroom: '', studentId: '' });
+  const [dashFilters, setDashFilters] = useState(getInitialDashFilters());
   const [occFilters, setOccFilters] = useState({ classroom: '', date: '', search: '' });
   const [reportFilters, setReportFilters] = useState({ type: 'all', classroom: '', dateStart: '', dateEnd: '' });
+
+  // Estados de Modals de Relatórios Administrativos
+  const [isStudentReportModalOpen, setIsStudentReportModalOpen] = useState(false);
+  const [activeReportStudent, setActiveReportStudent] = useState(null);
+  const [isClassroomReportModalOpen, setIsClassroomReportModalOpen] = useState(false);
+  const [activeReportClassroom, setActiveReportClassroom] = useState(null);
 
   // Estados dos Formulários de Ocorrências
   const [atrasoForm, setAtrasoForm] = useState({ date: '', time: '', reason: '', customReason: '', guardian: '', staff: 'Auxiliar Jéssica', obs: '', signature: '' });
@@ -78,42 +112,235 @@ export default function App() {
   // Estado do formulário de estudantes
   const [studentForm, setStudentForm] = useState({ name: '', classroom: '', active: 'active' });
 
+  // Estados de Anexos do Modal "Lançar Ocorrência"
+  const [formAttachment, setFormAttachment] = useState(null); // { name, type, data, size }
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef(null);
+  const dropZoneRef = useRef(null);
+
+  // Conversão de arquivo para Base64
+  const processFile = (file) => {
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) {
+      alert('Arquivo muito grande. O limite máximo permitido é 15MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const attachment = {
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        data: reader.result,
+        size: file.size
+      };
+      setFormAttachment(attachment);
+      
+      // Se for atestado médico, atualiza filePreview para validação do formulário
+      setAtestadoForm(prev => ({
+        ...prev,
+        filePreview: reader.result
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (e) => {
+    processFile(e.target.files[0]);
+    e.target.value = '';
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    processFile(file);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (dropZoneRef.current && !dropZoneRef.current.contains(e.relatedTarget)) {
+      setIsDragging(false);
+    }
+  };
+
+  const clearAttachment = () => {
+    setFormAttachment(null);
+    setIsDragging(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    
+    // Se for atestado médico, limpa o preview
+    setAtestadoForm(prev => ({
+      ...prev,
+      filePreview: ''
+    }));
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Função para capitalizar e normalizar nomes de alunos de forma Title Case
+  const toTitleCase = (str) => {
+    if (!str) return '';
+    const particles = ['de', 'da', 'do', 'dos', 'das', 'e'];
+    return str.toString().toLowerCase().split(' ').map((word, index) => {
+      if (particles.includes(word) && index !== 0) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    }).join(' ');
+  };
+
+  // Normaliza o nome da sala/turma
+  const normalizeClassroom = (room) => {
+    if (!room) return 'Alegria';
+    const r = room.toString().trim().toLowerCase();
+    if (r.startsWith('alegr')) return 'Alegria';
+    if (r.startsWith('carinh')) return 'Carinho';
+    if (r.startsWith('uni') || r.startsWith('uniã') || r.startsWith('unia')) return 'União';
+    if (r.startsWith('amizad')) return 'Amizade';
+    if (r.startsWith('felicid')) return 'Felicidade';
+    return 'Alegria'; // Padrão
+  };
+
+  // Processamento do arquivo de planilha (XLSX/XLS/CSV) carregado
+  const processImportFile = (file) => {
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        if (typeof window.XLSX === 'undefined') {
+          alert('Erro: Biblioteca SheetJS não carregada.');
+          return;
+        }
+        const workbook = window.XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const rows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        if (rows.length < 2) {
+          alert('A planilha deve conter pelo menos uma linha de cabeçalho e uma linha de dados.');
+          return;
+        }
+        
+        // Lendo a partir da segunda linha (index 1), pulando cabeçalho
+        const parsedStudents = [];
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0) continue;
+          
+          const rawName = row[0];
+          const rawClassroom = row[1];
+          
+          if (!rawName || !rawName.toString().trim()) continue;
+          
+          const cleanName = toTitleCase(rawName.toString().trim().replace(/\s+/g, ' '));
+          const cleanClassroom = normalizeClassroom(rawClassroom);
+          
+          parsedStudents.push({
+            name: cleanName,
+            classroom: cleanClassroom
+          });
+        }
+        
+        if (parsedStudents.length === 0) {
+          alert('Nenhum aluno válido com nome e sala preenchidos foi encontrado na planilha.');
+          return;
+        }
+        
+        setImportFileList(parsedStudents);
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao ler a planilha. Certifique-se de que é um arquivo Excel (.xlsx, .xls) ou CSV válido.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleImportFileChange = (e) => {
+    processImportFile(e.target.files[0]);
+    e.target.value = '';
+  };
+
+  const handleImportDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsImportDragging(false);
+    const file = e.dataTransfer.files[0];
+    processImportFile(file);
+  };
+
+  const handleImportDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsImportDragging(true);
+  };
+
+  const handleImportDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (importDropZoneRef.current && !importDropZoneRef.current.contains(e.relatedTarget)) {
+      setIsImportDragging(false);
+    }
+  };
+
+  const confirmBulkImport = async () => {
+    if (importFileList.length === 0) return;
+    
+    try {
+      await saveStudentBulk(importFileList);
+      alert(`${importFileList.length} alunos cadastrados com sucesso via importação em lote no Supabase!`);
+      setIsImportModalOpen(false);
+      setImportFileList([]);
+      loadAllData(); // Sincroniza dados na tela
+    } catch (err) {
+      console.error(err);
+      alert('Erro de conexão ao enviar dados para o Supabase.');
+    }
+  };
+
   // ==========================================================================
-  // SYNC COM A API / SQLite
+  // SYNC COM O SUPABASE
   // ==========================================================================
 
   const loadAllData = async () => {
     try {
       setIsLoading(true);
-      const [studentsRes, occurrencesRes, settingsRes, attendanceRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/students`),
-        fetch(`${API_BASE_URL}/occurrences`),
-        fetch(`${API_BASE_URL}/settings`),
-        fetch(`${API_BASE_URL}/attendance`)
+      const [studentsData, occurrencesData, settingsData, attendanceData] = await Promise.all([
+        getStudents(),
+        getOccurrences(),
+        getSettings(),
+        getAttendance()
       ]);
 
-      const studentsData = await studentsRes.json();
-      const occurrencesData = await occurrencesRes.json();
-      const settingsData = await settingsRes.json();
-      const attendanceData = await attendanceRes.json();
+      setStudents(studentsData || []);
+      setOccurrences(occurrencesData || []);
+      setAttendanceList(attendanceData || []);
 
-      setStudents(studentsData);
-      setOccurrences(occurrencesData);
-      setAttendanceList(attendanceData);
-
-      // Carrega settings se persistidas no SQLite
-      if (settingsData.activeRole) {
+      // Carrega settings se persistidas no Supabase
+      if (settingsData && settingsData.activeRole) {
         setActiveUser({
           role: settingsData.activeRole,
           name: settingsData.activeUserName || 'Diretora Ana Clara',
           avatar: settingsData.activeUserAvatar || '👩‍💼'
         });
       }
-      if (settingsData.theme) {
+      if (settingsData && settingsData.theme) {
         setIsDark(settingsData.theme === 'dark');
       }
     } catch (error) {
-      console.error('Erro ao sincronizar dados com SQLite:', error);
+      console.error('Erro ao sincronizar dados com Supabase:', error);
     } finally {
       setIsLoading(false);
     }
@@ -134,36 +361,28 @@ export default function App() {
       body.classList.add('light-mode');
     }
     
-    // Salva tema no back-end
+    // Salva tema no Supabase
     if (!isLoading) {
-      fetch(`${API_BASE_URL}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme: isDark ? 'dark' : 'light' })
-      });
+      saveSettings({ theme: isDark ? 'dark' : 'light' }).catch(() => {});
     }
   }, [isDark]);
 
-  // Sincroniza Role ativa no back-end
+  // Sincroniza Role ativa no Supabase
   const handleSetActiveUser = async (user) => {
     setActiveUser(user);
     try {
-      await fetch(`${API_BASE_URL}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activeRole: user.role,
-          activeUserName: user.name,
-          activeUserAvatar: user.avatar
-        })
+      await saveSettings({
+        activeRole: user.role,
+        activeUserName: user.name,
+        activeUserAvatar: user.avatar
       });
     } catch (err) {
-      console.error('Erro ao salvar role no servidor:', err);
+      console.error('Erro ao salvar role no Supabase:', err);
     }
   };
 
   // ==========================================================================
-  // CRUD ALUNOS (SQLite)
+  // CRUD ALUNOS (Supabase)
   // ==========================================================================
 
   const handleOpenStudentModal = (student = null) => {
@@ -188,32 +407,18 @@ export default function App() {
     }
 
     try {
+      const payload = {
+        id: currentEditStudent ? currentEditStudent.id : undefined,
+        name: studentForm.name.trim(),
+        classroom: studentForm.classroom,
+        active: studentForm.active === 'active'
+      };
+      const saved = await saveStudent(payload);
       if (currentEditStudent) {
-        // UPDATE
-        const res = await fetch(`${API_BASE_URL}/students/${currentEditStudent.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: studentForm.name.trim(),
-            classroom: studentForm.classroom,
-            active: studentForm.active === 'active'
-          })
-        });
-        const updated = await res.json();
-        setStudents(students.map(s => s.id === updated.id ? updated : s));
+        setStudents(students.map(s => s.id === saved.id ? saved : s));
         alert('Cadastro de aluno atualizado!');
       } else {
-        // CREATE
-        const res = await fetch(`${API_BASE_URL}/students`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: studentForm.name.trim(),
-            classroom: studentForm.classroom
-          })
-        });
-        const created = await res.json();
-        setStudents([...students, created]);
+        setStudents([...students, saved]);
         alert('Novo aluno cadastrado com sucesso!');
       }
       setIsStudentModalOpen(false);
@@ -225,10 +430,7 @@ export default function App() {
 
   const handleToggleStudentActive = async (studentId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/students/${studentId}/toggle`, {
-        method: 'PATCH'
-      });
-      const updated = await res.json();
+      const updated = await toggleStudentActive(studentId);
       setStudents(students.map(s => s.id === updated.id ? updated : s));
     } catch (err) {
       console.error('Erro ao alterar status do aluno:', err);
@@ -252,6 +454,9 @@ export default function App() {
     setAtestadoForm({ date: todayStr, startDate: todayStr, days: 1, endDate: todayStr, cid: '', reason: '', filePreview: '', obs: '' });
     setFaltaForm({ date: todayStr, reason: '', justified: 'nao', notified: 'nao', obs: '' });
     setAmamentacaoForm({ date: todayStr, timeIn: nowTimeStr, timeOut: '', guardian: '', obs: '' });
+
+    setFormAttachment(null);
+    setIsDragging(false);
 
     setIsOccurrenceModalOpen(true);
   };
@@ -277,10 +482,6 @@ export default function App() {
         alert('Preencha todos os campos obrigatórios.');
         return;
       }
-      if (!atrasoForm.signature) {
-        alert('A assinatura do responsável de entrega é obrigatória.');
-        return;
-      }
       fullOccData = {
         ...baseOcc,
         date: atrasoForm.date,
@@ -289,15 +490,11 @@ export default function App() {
         guardian: atrasoForm.guardian.trim(),
         staff: atrasoForm.staff,
         obs: atrasoForm.obs.trim(),
-        signature: atrasoForm.signature
+        signature: null
       };
     } else if (occType === 'saida') {
       if (!saidaForm.date || !saidaForm.time || !saidaForm.reason || !saidaForm.guardian.trim()) {
         alert('Preencha todos os campos obrigatórios.');
-        return;
-      }
-      if (!saidaForm.signature) {
-        alert('A assinatura do responsável de retirada é obrigatória.');
         return;
       }
       fullOccData = {
@@ -309,7 +506,7 @@ export default function App() {
         hasReturn: saidaForm.hasReturn,
         returnTime: saidaForm.hasReturn === 'sim' ? saidaForm.returnTime : '',
         obs: saidaForm.obs.trim(),
-        signature: saidaForm.signature
+        signature: null
       };
     } else if (occType === 'atestado') {
       if (!atestadoForm.date || !atestadoForm.startDate || !atestadoForm.reason || !atestadoForm.cid.trim()) {
@@ -359,39 +556,31 @@ export default function App() {
       };
     }
 
+    // Adiciona propriedades de anexo se selecionado
+    fullOccData.attachmentName = formAttachment ? formAttachment.name : null;
+    fullOccData.attachmentType = formAttachment ? formAttachment.type : null;
+    fullOccData.attachmentData = formAttachment ? formAttachment.data : null;
+
     try {
-      const res = await fetch(`${API_BASE_URL}/occurrences`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fullOccData)
-      });
-      
-      if (res.ok) {
-        const createdOcc = await res.json();
-        setOccurrences([createdOcc, ...occurrences]);
-        setIsOccurrenceModalOpen(false);
-        alert('Ocorrência registrada com sucesso no SQLite!');
-      } else {
-        alert('Erro ao salvar ocorrência no servidor.');
-      }
+      const createdOcc = await saveOccurrence(fullOccData);
+      setOccurrences([createdOcc, ...occurrences]);
+      setIsOccurrenceModalOpen(false);
+      alert('Ocorrência registrada com sucesso no Supabase!');
     } catch (err) {
       console.error(err);
-      alert('Erro na requisição para registrar ocorrência.');
+      alert('Erro ao registrar ocorrência no Supabase.');
     }
   };
 
   const handleDeleteOccurrence = async (occId) => {
     if (!window.confirm('Tem certeza que deseja excluir este registro permanentemente?')) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/occurrences/${occId}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        setOccurrences(occurrences.filter(o => o.id !== occId));
-        alert('Registro excluído com sucesso.');
-      }
+      await deleteOccurrence(occId);
+      setOccurrences(occurrences.filter(o => o.id !== occId));
+      alert('Registro excluído com sucesso.');
     } catch (err) {
       console.error(err);
+      alert('Erro ao excluir ocorrência no Supabase.');
     }
   };
 
@@ -402,40 +591,36 @@ export default function App() {
   const handleWipeHistory = async () => {
     if (!window.confirm('CUIDADO: Isso apagará TODAS as ocorrências cadastradas. Deseja continuar?')) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/settings/wipe`, { method: 'POST' });
-      if (res.ok) {
-        setOccurrences([]);
-        alert('Histórico de ocorrências completamente limpo!');
-      }
+      await wipeHistory();
+      setOccurrences([]);
+      alert('Histórico de ocorrências completamente limpo!');
     } catch (err) {
       console.error(err);
+      alert('Erro ao limpar histórico.');
     }
   };
 
   const handleResetEntireApp = async () => {
     if (!window.confirm('ATENÇÃO: Deseja redefinir todo o banco de dados? Todos os alunos cadastrados manualmente e histórico serão deletados, e os 70 alunos originais serão recarregados.')) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/settings/reset`, { method: 'POST' });
-      if (res.ok) {
-        alert('Sistema reiniciado com sucesso! Sincronizando dados...');
-        await loadAllData();
-      }
+      await resetDatabase();
+      alert('Sistema redefinido com sucesso! Sincronizando dados...');
+      await loadAllData();
     } catch (err) {
       console.error(err);
+      alert('Erro ao reiniciar aplicação no Supabase.');
     }
   };
 
   const handleSeedDemoData = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${API_BASE_URL}/settings/seed`, { method: 'POST' });
-      if (res.ok) {
-        const body = await res.json();
-        alert(body.message);
-        await loadAllData();
-      }
+      const count = await seedDemoData();
+      alert(`Massa fictícia gerada com sucesso! ${count} ocorrências inseridas no Supabase.`);
+      await loadAllData();
     } catch (err) {
       console.error(err);
+      alert('Erro ao semear massa de testes no Supabase.');
     } finally {
       setIsLoading(false);
     }
@@ -781,6 +966,308 @@ export default function App() {
   };
 
   // ==========================================================================
+  // DOSSIÊS E RELATÓRIOS INDIVIDUAIS/TURMA DE ALUNOS (EXCEL & PDF)
+  // ==========================================================================
+
+  // Relatório Detalhado de Aluno
+  const handleOpenStudentReportModal = (student) => {
+    setActiveReportStudent(student);
+    setIsStudentReportModalOpen(true);
+  };
+
+  const exportStudentToExcel = (student) => {
+    const studentOccs = occurrences.filter(o => o.studentId === student.id);
+    if (studentOccs.length === 0) {
+      alert("Não há dados para exportar deste aluno.");
+      return;
+    }
+
+    if (typeof window.XLSX === "undefined") {
+      alert("Erro: Biblioteca SheetJS não carregada.");
+      return;
+    }
+
+    const mapped = studentOccs.map((occ, idx) => {
+      let details = "";
+      let resp = occ.guardian || "N/A";
+      
+      if (occ.type === "atraso") {
+        details = `Chegada: ${occ.time} - Motivo: ${occ.motive}`;
+      } else if (occ.type === "saida") {
+        details = `Saída: ${occ.time} - Motivo: ${occ.motive} (Retorna: ${occ.hasReturn === 'sim' ? 'Sim' : 'Não'})`;
+      } else if (occ.type === "atestado") {
+        details = `Afastado de ${occ.startDate} a ${occ.endDate} (${occ.days} dias) - Diagnóstico: ${occ.motive} (CID: ${occ.cid || 'N/A'})`;
+        resp = "Médico CRM";
+      } else if (occ.type === "falta") {
+        details = `Falta por: ${occ.motive} (Justificada: ${occ.justified === 'sim' ? 'Sim' : 'Não'})`;
+      } else if (occ.type === "amamentacao") {
+        details = `Espaço Lactante: ${occ.timeIn} às ${occ.timeOut}`;
+      }
+      
+      return {
+        'Nº': idx + 1,
+        'Data Registro': occ.date.split("-").reverse().join("/"),
+        'Tipo Ocorrência': occ.type.toUpperCase(),
+        'Detalhes e Justificativas': details,
+        'Responsável Relacionado': resp,
+        'Observações': occ.obs || "-"
+      };
+    });
+
+    const worksheet = window.XLSX.utils.json_to_sheet(mapped);
+    const workbook = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(workbook, worksheet, "Ocorrências");
+    
+    // Auto-ajusta largura de colunas
+    const maxLens = {};
+    mapped.forEach(row => {
+      Object.keys(row).forEach(key => {
+        const valStr = String(row[key]);
+        maxLens[key] = Math.max(maxLens[key] || 10, valStr.length);
+      });
+    });
+    worksheet['!cols'] = Object.keys(maxLens).map(key => ({ wch: maxLens[key] + 3 }));
+
+    window.XLSX.writeFile(workbook, `Dossie_${student.name.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
+  const exportStudentToPDF = (student) => {
+    const studentOccs = occurrences.filter(o => o.studentId === student.id);
+    if (studentOccs.length === 0) {
+      alert("Não há dados para exportar deste aluno.");
+      return;
+    }
+
+    if (typeof window.jspdf === "undefined") {
+      alert("Erro: Biblioteca jsPDF não carregada.");
+      return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    
+    // Cabeçalho Roxo
+    doc.setFillColor(99, 102, 241);
+    doc.rect(0, 0, 210, 40, "F");
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.text("Dossiê Escolar Individual", 15, 18);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.text(`Criança: ${student.name} | Sala: ${student.classroom}`, 15, 25);
+    doc.text(`Data de Emissão: ${new Date().toLocaleDateString("pt-BR")} | Total Ocorrências: ${studentOccs.length}`, 15, 30);
+    
+    let y = 50;
+    doc.setFontSize(10);
+    doc.setTextColor(30, 41, 59);
+    
+    // Cabeçalho da Tabela
+    doc.setFillColor(241, 245, 249);
+    doc.rect(10, y - 5, 190, 8, "F");
+    doc.setFont("helvetica", "bold");
+    doc.text("Data", 12, y);
+    doc.text("Tipo", 35, y);
+    doc.text("Motivo / Detalhes", 65, y);
+    doc.text("Responsável/Obs", 145, y);
+    
+    y += 10;
+    doc.setFont("helvetica", "normal");
+    
+    studentOccs.forEach((occ, idx) => {
+      if (y > 275) {
+        doc.addPage();
+        y = 20;
+        doc.setFillColor(241, 245, 249);
+        doc.rect(10, y - 5, 190, 8, "F");
+        doc.setFont("helvetica", "bold");
+        doc.text("Data", 12, y);
+        doc.text("Tipo", 35, y);
+        doc.text("Motivo / Detalhes", 65, y);
+        doc.text("Responsável/Obs", 145, y);
+        y += 10;
+        doc.setFont("helvetica", "normal");
+      }
+      
+      const dateBR = occ.date.split("-").reverse().join("/");
+      
+      let details = "";
+      if (occ.type === "atraso") details = `Chegada ${occ.time} - ${occ.motive}`;
+      else if (occ.type === "saida") details = `Saída ${occ.time} - ${occ.motive}`;
+      else if (occ.type === "atestado") details = `Atestado (${occ.days}d) - CID ${occ.cid}`;
+      else if (occ.type === "falta") details = `${occ.motive} (${occ.justified === 'sim' ? 'Justif.' : 'Não Justif.'})`;
+      else if (occ.type === "amamentacao") details = `Amamentação das ${occ.timeIn}`;
+      
+      const detailsTrunc = details.length > 50 ? details.substring(0, 47) + "..." : details;
+      const respVal = occ.guardian || occ.staff || occ.obs || "-";
+      const respTrunc = respVal.length > 30 ? respVal.substring(0, 27) + "..." : respVal;
+
+      doc.text(dateBR, 12, y);
+      doc.text(occ.type.toUpperCase(), 35, y);
+      doc.text(detailsTrunc, 65, y);
+      doc.text(respTrunc, 145, y);
+      
+      doc.setDrawColor(226, 232, 240);
+      doc.line(10, y + 3, 200, y + 3);
+      
+      y += 9;
+    });
+    
+    doc.save(`Dossie_${student.name.replace(/\s+/g, "_")}.pdf`);
+  };
+
+  // Relatório Detalhado de Turma
+  const handleOpenClassroomReportModal = (classroom) => {
+    setActiveReportClassroom(classroom);
+    setIsClassroomReportModalOpen(true);
+  };
+
+  const exportClassroomToExcel = (classroom) => {
+    const classOccs = occurrences.filter(o => o.classroom === classroom);
+    if (classOccs.length === 0) {
+      alert("Não há ocorrências gravadas nesta sala.");
+      return;
+    }
+
+    if (typeof window.XLSX === "undefined") {
+      alert("Erro: Biblioteca SheetJS não carregada.");
+      return;
+    }
+
+    const mapped = classOccs.map((occ, idx) => {
+      let details = "";
+      let resp = occ.guardian || "N/A";
+      
+      if (occ.type === "atraso") {
+        details = `Chegada: ${occ.time} - Motivo: ${occ.motive}`;
+      } else if (occ.type === "saida") {
+        details = `Saída: ${occ.time} - Motivo: ${occ.motive} (Retorna: ${occ.hasReturn === 'sim' ? 'Sim' : 'Não'})`;
+      } else if (occ.type === "atestado") {
+        details = `Afastado de ${occ.startDate} a ${occ.endDate} (${occ.days} dias) - Diagnóstico: ${occ.motive} (CID: ${occ.cid || 'N/A'})`;
+        resp = "Médico CRM";
+      } else if (occ.type === "falta") {
+        details = `Falta por: ${occ.motive} (Justificada: ${occ.justified === 'sim' ? 'Sim' : 'Não'})`;
+      } else if (occ.type === "amamentacao") {
+        details = `Espaço Lactante: ${occ.timeIn} às ${occ.timeOut}`;
+      }
+      
+      return {
+        'Nº': idx + 1,
+        'Data Registro': occ.date.split("-").reverse().join("/"),
+        'Nome Criança': occ.studentName,
+        'Tipo Ocorrência': occ.type.toUpperCase(),
+        'Detalhes e Justificativas': details,
+        'Responsável Relacionado': resp,
+        'Observações': occ.obs || "-"
+      };
+    });
+
+    const worksheet = window.XLSX.utils.json_to_sheet(mapped);
+    const workbook = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(workbook, worksheet, `Sala_${classroom}`);
+    
+    // Auto-ajusta largura de colunas
+    const maxLens = {};
+    mapped.forEach(row => {
+      Object.keys(row).forEach(key => {
+        const valStr = String(row[key]);
+        maxLens[key] = Math.max(maxLens[key] || 10, valStr.length);
+      });
+    });
+    worksheet['!cols'] = Object.keys(maxLens).map(key => ({ wch: maxLens[key] + 3 }));
+
+    window.XLSX.writeFile(workbook, `Relatorio_Sala_${classroom}_${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
+  const exportClassroomToPDF = (classroom) => {
+    const classOccs = occurrences.filter(o => o.classroom === classroom);
+    if (classOccs.length === 0) {
+      alert("Não há ocorrências gravadas nesta sala.");
+      return;
+    }
+
+    if (typeof window.jspdf === "undefined") {
+      alert("Erro: Biblioteca jsPDF não carregada.");
+      return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    
+    // Cabeçalho Roxo
+    doc.setFillColor(99, 102, 241);
+    doc.rect(0, 0, 210, 40, "F");
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.text(`Relatório da Turma: Sala ${classroom}`, 15, 18);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.text(`Total Alunos Ativos na Sala: ${students.filter(s => s.classroom === classroom && s.active).length}`, 15, 25);
+    doc.text(`Data de Emissão: ${new Date().toLocaleDateString("pt-BR")} | Ocorrências Registradas: ${classOccs.length}`, 15, 30);
+    
+    let y = 50;
+    doc.setFontSize(10);
+    doc.setTextColor(30, 41, 59);
+    
+    // Cabeçalho da Tabela
+    doc.setFillColor(241, 245, 249);
+    doc.rect(10, y - 5, 190, 8, "F");
+    doc.setFont("helvetica", "bold");
+    doc.text("Data", 12, y);
+    doc.text("Criança", 35, y);
+    doc.text("Tipo", 85, y);
+    doc.text("Motivo / Detalhes", 110, y);
+    
+    y += 10;
+    doc.setFont("helvetica", "normal");
+    
+    classOccs.forEach((occ, idx) => {
+      if (y > 275) {
+        doc.addPage();
+        y = 20;
+        doc.setFillColor(241, 245, 249);
+        doc.rect(10, y - 5, 190, 8, "F");
+        doc.setFont("helvetica", "bold");
+        doc.text("Data", 12, y);
+        doc.text("Criança", 35, y);
+        doc.text("Tipo", 85, y);
+        doc.text("Motivo / Detalhes", 110, y);
+        y += 10;
+        doc.setFont("helvetica", "normal");
+      }
+      
+      const dateBR = occ.date.split("-").reverse().join("/");
+      
+      let details = "";
+      if (occ.type === "atraso") details = `Chegada ${occ.time} - ${occ.motive}`;
+      else if (occ.type === "saida") details = `Saída ${occ.time} - ${occ.motive}`;
+      else if (occ.type === "atestado") details = `Atestado (${occ.days}d) - CID ${occ.cid}`;
+      else if (occ.type === "falta") details = `${occ.motive} (${occ.justified === 'sim' ? 'Justif.' : 'Sem Just.'})`;
+      else if (occ.type === "amamentacao") details = `Amamentação das ${occ.timeIn}`;
+      
+      const detailsTrunc = details.length > 55 ? details.substring(0, 52) + "..." : details;
+      const nameTrunc = occ.studentName.length > 25 ? occ.studentName.substring(0, 22) + "..." : occ.studentName;
+
+      doc.text(dateBR, 12, y);
+      doc.text(nameTrunc, 35, y);
+      doc.text(occ.type.toUpperCase(), 85, y);
+      doc.text(detailsTrunc, 110, y);
+      
+      doc.setDrawColor(226, 232, 240);
+      doc.line(10, y + 3, 200, y + 3);
+      
+      y += 9;
+    });
+    
+    doc.save(`Relatorio_Sala_${classroom}.pdf`);
+  };
+
+  // ==========================================================================
   // INSIGHTS INTELIGENTES & ALERTAS PEDAGÓGICOS (ALGORITMO LOCAL)
   // ==========================================================================
   const getInsightsData = () => {
@@ -1082,7 +1569,7 @@ export default function App() {
                 </div>
                 <button 
                   className="clear-filters-btn" 
-                  onClick={() => setDashFilters({ dateStart: '', dateEnd: '', classroom: '', studentId: '' })}
+                  onClick={() => setDashFilters(getInitialDashFilters())}
                 >
                   Limpar Filtros
                 </button>
@@ -1295,10 +1782,20 @@ export default function App() {
                 </select>
               </div>
               
-              <button className="primary-btn" onClick={() => handleOpenStudentModal(null)}>
-                <Plus size={18} />
-                <span>Adicionar Aluno</span>
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {occFilters.classroom && (
+                  <button className="secondary-btn" onClick={() => handleOpenClassroomReportModal(occFilters.classroom)} style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}>
+                    <span>📊 Relatório da Sala {occFilters.classroom}</span>
+                  </button>
+                )}
+                <button className="secondary-btn" onClick={() => setIsImportModalOpen(true)}>
+                  <span>📊 Importar Planilha</span>
+                </button>
+                <button className="primary-btn" onClick={() => handleOpenStudentModal(null)}>
+                  <Plus size={18} />
+                  <span>Adicionar Aluno</span>
+                </button>
+              </div>
             </div>
             
             <div className="table-card">
@@ -1350,6 +1847,14 @@ export default function App() {
                             <td>{activeAtest > 0 ? <span className="occ-type-pill atestado">Ativo</span> : <span className="text-light">-</span>}</td>
                             <td className="actions-column">
                               <div className="action-row-buttons">
+                                <button 
+                                  className="row-action-btn" 
+                                  onClick={() => handleOpenStudentReportModal(st)} 
+                                  title="Dossiê Detalhado do Aluno"
+                                  style={{ color: 'var(--color-primary)', borderColor: 'var(--color-primary-light)' }}
+                                >
+                                  📊
+                                </button>
                                 <button className="row-action-btn" onClick={() => handleOpenStudentModal(st)} title="Editar">✏️</button>
                                 {activeUser.role === 'diretora' && (
                                   <button className="row-action-btn delete" onClick={() => handleToggleStudentActive(st.id)} title={st.active ? 'Inativar' : 'Reativar'}>
@@ -1927,6 +2432,387 @@ export default function App() {
       )}
 
       {/* ==================================================================
+          MODAL: IMPORTAR ALUNOS VIA PLANILHA
+          ================================================================== */}
+      {isImportModalOpen && (
+        <div className="modal-overlay active">
+          <div className="modal-card modal-large">
+            <div className="modal-header">
+              <h2>📊 Importar Alunos via Planilha</h2>
+              <button className="modal-close-btn" onClick={() => { setIsImportModalOpen(false); setImportFileList([]); }}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="form-body">
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                Selecione ou arraste um arquivo Excel (.xlsx, .xls) ou CSV contendo os alunos. A primeira coluna deve conter o <strong>Nome da Criança</strong> e a segunda coluna a <strong>Sala/Turma</strong>.
+              </p>
+
+              {/* Área de Drag and Drop */}
+              <div 
+                ref={importDropZoneRef}
+                onDragOver={handleImportDragOver}
+                onDragLeave={handleImportDragLeave}
+                onDrop={handleImportDrop}
+                onClick={() => importFileInputRef.current && importFileInputRef.current.click()}
+                className={`drag-drop-zone ${isImportDragging ? 'dragging' : ''}`}
+                style={{
+                  border: '2px dashed var(--color-primary)',
+                  borderRadius: 'var(--radius-lg)',
+                  padding: '30px',
+                  textAlign: 'center',
+                  backgroundColor: isImportDragging ? 'var(--color-primary-light)' : 'var(--bg-app)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  marginBottom: '20px'
+                }}
+              >
+                <div style={{ pointerEvents: 'none' }}>
+                  <span style={{ fontSize: '40px', display: 'block', marginBottom: '10px' }}>📊</span>
+                  <p style={{ fontWeight: 600, margin: '4px 0', color: 'var(--text-primary)' }}>Arrastar e soltar planilha aqui</p>
+                  <p style={{ fontSize: '12px', color: 'var(--text-light)', margin: '4px 0' }}>ou clique para navegar nos seus arquivos</p>
+                  <p style={{ fontSize: '11px', color: 'var(--text-light)', fontStyle: 'italic' }}>Formatos aceitos: .xlsx, .xls, .csv (Limite de 15MB)</p>
+                </div>
+              </div>
+
+              {/* Input nativo oculto */}
+              <input
+                ref={importFileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleImportFileChange}
+                style={{ display: 'none' }}
+                tabIndex={-1}
+              />
+
+              {/* Visualização e Confirmação dos Alunos Importados */}
+              {importFileList.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>Alunos detectados na planilha ({importFileList.length}):</h3>
+                    <button className="row-action-btn delete" onClick={() => setImportFileList([])} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--color-faltas)' }}>
+                      Limpar
+                    </button>
+                  </div>
+                  
+                  <div className="table-card" style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                    <table className="data-table" style={{ width: '100%', fontSize: '13px' }}>
+                      <thead>
+                        <tr>
+                          <th>Nome da Criança</th>
+                          <th>Sala / Turma</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importFileList.slice(0, 10).map((st, idx) => (
+                          <tr key={idx}>
+                            <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{st.name}</td>
+                            <td><span className="occ-type-pill amamentacao" style={{ backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary)' }}>{st.classroom}</span></td>
+                          </tr>
+                        ))}
+                        {importFileList.length > 10 && (
+                          <tr>
+                            <td colSpan={2} style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px', fontStyle: 'italic', padding: '8px' }}>
+                              ...e mais {importFileList.length - 10} alunos listados.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer" style={{ marginTop: '20px' }}>
+              <button type="button" className="secondary-btn" onClick={() => { setIsImportModalOpen(false); setImportFileList([]); }}>
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                className="primary-btn" 
+                onClick={confirmBulkImport}
+                disabled={importFileList.length === 0}
+              >
+                Confirmar Importação ({importFileList.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================
+          MODAL: DOSSIÊ E RELATÓRIO DETALHADO DO ALUNO
+          ================================================================== */}
+      {isStudentReportModalOpen && activeReportStudent && (
+        <div className="modal-overlay active">
+          <div className="modal-card modal-large" style={{ maxWidth: '800px' }}>
+            <div className="modal-header" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '32px' }}>👦</span>
+                <div>
+                  <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '20px', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                    Dossiê Individual: {activeReportStudent.name}
+                  </h2>
+                  <span className="occ-type-pill amamentacao" style={{ backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary)', marginTop: '4px', display: 'inline-block' }}>
+                    Sala {activeReportStudent.classroom}
+                  </span>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button className="secondary-btn" onClick={() => exportStudentToExcel(activeReportStudent)} style={{ height: '36px', padding: '0 12px', fontSize: '13px' }}>
+                  📊 Excel
+                </button>
+                <button className="primary-btn" onClick={() => exportStudentToPDF(activeReportStudent)} style={{ height: '36px', padding: '0 12px', fontSize: '13px' }}>
+                  📄 PDF
+                </button>
+                <button className="modal-close-btn" onClick={() => { setIsStudentReportModalOpen(false); setActiveReportStudent(null); }} style={{ marginLeft: '8px' }}>
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="form-body" style={{ padding: '20px 0', maxHeight: '60vh', overflowY: 'auto' }}>
+              {/* Métricas do Aluno */}
+              <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px', padding: '0 20px' }}>
+                <div style={{ padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--color-atrasos-bg)', color: 'var(--color-atrasos)', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Atrasos</span>
+                  <span style={{ fontSize: '24px', fontWeight: 800 }}>
+                    {occurrences.filter(o => o.studentId === activeReportStudent.id && o.type === 'atraso').length}
+                  </span>
+                </div>
+                <div style={{ padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--color-faltas-bg)', color: 'var(--color-faltas)', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Faltas</span>
+                  <span style={{ fontSize: '24px', fontWeight: 800 }}>
+                    {occurrences.filter(o => o.studentId === activeReportStudent.id && o.type === 'falta').length}
+                  </span>
+                </div>
+                <div style={{ padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--color-atestados-bg)', color: 'var(--color-atestados)', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Atestados</span>
+                  <span style={{ fontSize: '24px', fontWeight: 800 }}>
+                    {occurrences.filter(o => o.studentId === activeReportStudent.id && o.type === 'atestado').length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Tabela de Ocorrências */}
+              <div style={{ padding: '0 20px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px', color: 'var(--text-primary)' }}>Histórico Completo de Ocorrências:</h3>
+                
+                {occurrences.filter(o => o.studentId === activeReportStudent.id).length === 0 ? (
+                  <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-secondary)', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                    Nenhuma ocorrência ou registro lançado para este aluno.
+                  </div>
+                ) : (
+                  <div className="table-card" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                    <div className="table-responsive">
+                      <table className="data-table" style={{ width: '100%', fontSize: '13px' }}>
+                        <thead>
+                          <tr>
+                            <th>Data</th>
+                            <th>Tipo</th>
+                            <th>Detalhes / Justificativa</th>
+                            <th>Anexo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {occurrences
+                            .filter(o => o.studentId === activeReportStudent.id)
+                            .sort((a, b) => b.date.localeCompare(a.date))
+                            .map(occ => (
+                              <tr key={occ.id}>
+                                <td><strong>{occ.date.split('-').reverse().join('/')}</strong></td>
+                                <td><span className={`occ-type-pill ${occ.type}`}>{occ.type.toUpperCase()}</span></td>
+                                <td>
+                                  {occ.type === 'atraso' && <span>Chegada: <strong>{occ.time}</strong> - {occ.motive} {occ.obs && <em style={{ fontSize: '11px', display: 'block', color: 'var(--text-secondary)' }}>Obs: {occ.obs}</em>}</span>}
+                                  {occ.type === 'saida' && <span>Saída: <strong>{occ.time}</strong> - {occ.motive} {occ.hasReturn === 'sim' && `(Retorno: ${occ.returnTime})`}</span>}
+                                  {occ.type === 'atestado' && <span>Afastado: de {occ.startDate.split('-').reverse().join('/')} a {occ.endDate.split('-').reverse().join('/')} ({occ.days}d) - CID {occ.cid}</span>}
+                                  {occ.type === 'falta' && <span>{occ.motive} - {occ.justified === 'sim' ? 'Justificada' : 'Não Justificada'} {occ.obs && <em style={{ fontSize: '11px', display: 'block', color: 'var(--text-secondary)' }}>Obs: {occ.obs}</em>}</span>}
+                                  {occ.type === 'amamentacao' && <span>Permanência: {occ.timeIn} às {occ.timeOut}</span>}
+                                </td>
+                                <td>
+                                  {(occ.signature || occ.filePreview || occ.attachmentName) ? (
+                                    <button 
+                                      className="status-pill active" 
+                                      style={{ border: 'none', cursor: 'pointer', padding: '2px 8px', fontSize: '11px' }}
+                                      onClick={() => { setActiveReceipt(occ); setIsReceiptModalOpen(true); }}
+                                    >
+                                      Ver
+                                    </button>
+                                  ) : '-'}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+              <button type="button" className="secondary-btn" onClick={() => { setIsStudentReportModalOpen(false); setActiveReportStudent(null); }}>
+                Fechar Dossiê
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================
+          MODAL: DOSSIÊ E RELATÓRIO DETALHADO DA TURMA
+          ================================================================== */}
+      {isClassroomReportModalOpen && activeReportClassroom && (
+        <div className="modal-overlay active">
+          <div className="modal-card modal-large" style={{ maxWidth: '800px' }}>
+            <div className="modal-header" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '32px' }}>🏫</span>
+                <div>
+                  <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '20px', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                    Dossiê Consolidado: Sala {activeReportClassroom}
+                  </h2>
+                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
+                    Resumo analítico e ocorrências da turma.
+                  </span>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button className="secondary-btn" onClick={() => exportClassroomToExcel(activeReportClassroom)} style={{ height: '36px', padding: '0 12px', fontSize: '13px' }}>
+                  📊 Excel
+                </button>
+                <button className="primary-btn" onClick={() => exportClassroomToPDF(activeReportClassroom)} style={{ height: '36px', padding: '0 12px', fontSize: '13px' }}>
+                  📄 PDF
+                </button>
+                <button className="modal-close-btn" onClick={() => { setIsClassroomReportModalOpen(false); setActiveReportClassroom(null); }} style={{ marginLeft: '8px' }}>
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="form-body" style={{ padding: '20px 0', maxHeight: '60vh', overflowY: 'auto' }}>
+              {/* Métricas da Turma */}
+              <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px', padding: '0 20px' }}>
+                <div style={{ padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)', color: 'var(--text-primary)', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', display: 'block', color: 'var(--text-secondary)' }}>Alunos Matriculados</span>
+                  <span style={{ fontSize: '24px', fontWeight: 800 }}>
+                    {students.filter(s => s.classroom === activeReportClassroom && s.active).length}
+                  </span>
+                </div>
+                <div style={{ padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)', color: 'var(--text-primary)', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', display: 'block', color: 'var(--text-secondary)' }}>Total Ocorrências</span>
+                  <span style={{ fontSize: '24px', fontWeight: 800 }} style={{ color: 'var(--color-primary)' }}>
+                    {occurrences.filter(o => o.classroom === activeReportClassroom).length}
+                  </span>
+                </div>
+                <div style={{ padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)', color: 'var(--text-primary)', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', display: 'block', color: 'var(--text-secondary)' }}>Atestados Ativos</span>
+                  <span style={{ fontSize: '24px', fontWeight: 800 }} style={{ color: 'var(--color-atestados)' }}>
+                    {occurrences.filter(o => {
+                      const today = new Date().toISOString().split("T")[0];
+                      return o.classroom === activeReportClassroom && o.type === 'atestado' && o.startDate <= today && o.endDate >= today;
+                    }).length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Tabela de Estudantes da Sala com Suas Métricas */}
+              <div style={{ padding: '0 20px', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px', color: 'var(--text-primary)' }}>Alunos e Índices:</h3>
+                <div className="table-card" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                  <div className="table-responsive" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                    <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                      <thead>
+                        <tr>
+                          <th>Nome do Aluno</th>
+                          <th>Atrasos</th>
+                          <th>Faltas</th>
+                          <th>Atestados</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {students
+                          .filter(s => s.classroom === activeReportClassroom && s.active)
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map(stud => {
+                            const dels = occurrences.filter(o => o.studentId === stud.id && o.type === 'atraso').length;
+                            const fts = occurrences.filter(o => o.studentId === stud.id && o.type === 'falta').length;
+                            const atss = occurrences.filter(o => o.studentId === stud.id && o.type === 'atestado').length;
+                            return (
+                              <tr key={stud.id}>
+                                <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{stud.name}</td>
+                                <td style={{ fontWeight: 600, color: dels > 2 ? 'var(--color-atrasos)' : 'inherit' }}>{dels}</td>
+                                <td style={{ fontWeight: 600, color: fts > 2 ? 'var(--color-faltas)' : 'inherit' }}>{fts}</td>
+                                <td style={{ fontWeight: 600, color: atss > 0 ? 'var(--color-atestados)' : 'inherit' }}>{atss}</td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabela de Ocorrências da Turma */}
+              <div style={{ padding: '0 20px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px', color: 'var(--text-primary)' }}>Histórico da Turma:</h3>
+                
+                {occurrences.filter(o => o.classroom === activeReportClassroom).length === 0 ? (
+                  <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-secondary)', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                    Nenhuma ocorrência registrada para esta sala de aula.
+                  </div>
+                ) : (
+                  <div className="table-card" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                    <div className="table-responsive">
+                      <table className="data-table" style={{ width: '100%', fontSize: '13px' }}>
+                        <thead>
+                          <tr>
+                            <th>Data</th>
+                            <th>Aluno</th>
+                            <th>Tipo</th>
+                            <th>Detalhes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {occurrences
+                            .filter(o => o.classroom === activeReportClassroom)
+                            .sort((a, b) => b.date.localeCompare(a.date))
+                            .map(occ => (
+                              <tr key={occ.id}>
+                                <td><strong>{occ.date.split('-').reverse().join('/')}</strong></td>
+                                <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{occ.studentName}</td>
+                                <td><span className={`occ-type-pill ${occ.type}`}>{occ.type.toUpperCase()}</span></td>
+                                <td>
+                                  {occ.type === 'atraso' && <span>Chegou às <strong>{occ.time}</strong> - {occ.motive}</span>}
+                                  {occ.type === 'saida' && <span>Saída às <strong>{occ.time}</strong> - {occ.motive}</span>}
+                                  {occ.type === 'atestado' && <span>Afastado: {occ.days}d (CID {occ.cid})</span>}
+                                  {occ.type === 'falta' && <span>{occ.motive} ({occ.justified === 'sim' ? 'Justif.' : 'Não Justif.'})</span>}
+                                  {occ.type === 'amamentacao' && <span>Amamentação das {occ.timeIn}</span>}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+              <button type="button" className="secondary-btn" onClick={() => { setIsClassroomReportModalOpen(false); setActiveReportClassroom(null); }}>
+                Fechar Relatório
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================
           MODAL: LANÇAR OCORRÊNCIA MULTI-MÓDULO
           ================================================================== */}
       {isOccurrenceModalOpen && (
@@ -2099,13 +2985,6 @@ export default function App() {
                         onChange={(e) => setAtrasoForm({ ...atrasoForm, obs: e.target.value })}
                       />
                     </div>
-
-                    <SignaturePad 
-                      id="atraso-signature"
-                      label="Assinatura Digital do Responsável de Entrega*"
-                      onSave={(dataUrl) => setAtrasoForm({ ...atrasoForm, signature: dataUrl })}
-                      onClear={() => setAtrasoForm({ ...atrasoForm, signature: '' })}
-                    />
                   </div>
                 )}
 
@@ -2209,13 +3088,6 @@ export default function App() {
                         onChange={(e) => setSaidaForm({ ...saidaForm, obs: e.target.value })}
                       />
                     </div>
-
-                    <SignaturePad 
-                      id="saida-signature"
-                      label="Assinatura Digital do Responsável pela Retirada*"
-                      onSave={(dataUrl) => setSaidaForm({ ...saidaForm, signature: dataUrl })}
-                      onClear={() => setSaidaForm({ ...saidaForm, signature: '' })}
-                    />
                   </div>
                 )}
 
@@ -2305,22 +3177,6 @@ export default function App() {
                         value={atestadoForm.obs}
                         onChange={(e) => setAtestadoForm({ ...atestadoForm, obs: e.target.value })}
                       />
-                    </div>
-
-                    {/* Simulação Premium de Upload/Digitalização de Arquivo */}
-                    <div className="form-group">
-                      <label>Digitalizar Atestado Médico Comprovante*</label>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
-                        <button 
-                          type="button" 
-                          className="secondary-btn" 
-                          onClick={handleAtestadoFileChange}
-                          style={{ border: '1px dashed var(--color-primary)' }}
-                        >
-                          📸 Digitalizar Atestado
-                        </button>
-                        {atestadoForm.filePreview && <span style={{ color: 'var(--color-success)', fontWeight: 600 }}>✓ Atestado Carregado e Validado</span>}
-                      </div>
                     </div>
                   </div>
                 )}
@@ -2476,6 +3332,163 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
+                {/* ARQUIVOS ANEXOS (Opcional) - Upload Zone com Drag & Drop */}
+                <div className="form-group" style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px dashed var(--slate-200)' }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    color: 'var(--slate-700)',
+                    marginBottom: '8px'
+                  }}>
+                    <span>📎 Documento Anexo</span>
+                    <span style={{
+                      fontWeight: 400,
+                      fontSize: '11px',
+                      color: 'var(--slate-400)',
+                      marginLeft: '2px'
+                    }}>
+                      (opcional — PDF, imagem, Word, e-mail · máx 15MB)
+                    </span>
+                  </label>
+
+                  {formAttachment ? (
+                    /* ---- PREVIEW: arquivo já selecionado ---- */
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '12px 16px',
+                      backgroundColor: '#f0fdf4',
+                      borderRadius: '10px',
+                      border: '1.5px solid #86efac'
+                    }}>
+                      <div style={{
+                        width: '36px', height: '36px',
+                        borderRadius: '8px',
+                        backgroundColor: 'white',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '18px',
+                        flexShrink: 0
+                      }}>
+                        {formAttachment.type.startsWith('image/') ? '🖼️' : formAttachment.type === 'application/pdf' ? '📄' : '📁'}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontWeight: 600, fontSize: '13px', color: '#166534',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                        }}>
+                          {formAttachment.name}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#16a34a', marginTop: '2px' }}>
+                          ✓ Pronto para anexar{formAttachment.size ? ` · ${formatFileSize(formAttachment.size)}` : ''}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={clearAttachment}
+                        title="Remover arquivo"
+                        style={{
+                          border: '1px solid #fca5a5',
+                          backgroundColor: '#fff1f2',
+                          color: '#dc2626',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          flexShrink: 0
+                        }}
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  ) : (
+                    /* ---- DROP ZONE: clique ou arraste ---- */
+                    <div
+                      ref={dropZoneRef}
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Selecionar ou arrastar arquivo"
+                      onClick={() => fileInputRef.current?.click()}
+                      onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
+                      onDrop={handleDrop}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      style={{
+                        border: `2px dashed ${isDragging ? '#6366f1' : '#cbd5e1'}`,
+                        borderRadius: '10px',
+                        padding: '24px 16px',
+                        backgroundColor: isDragging ? '#eef2ff' : '#f8fafc',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        transition: 'border-color 0.15s ease, background-color 0.15s ease',
+                        outline: 'none',
+                        userSelect: 'none'
+                      }}
+                    >
+                      {/* Ícone central */}
+                      <div style={{
+                        pointerEvents: 'none',
+                        fontSize: '24px',
+                        marginBottom: '8px',
+                        color: isDragging ? '#6366f1' : '#94a3b8'
+                      }}>
+                        📤
+                      </div>
+
+                      {/* Texto principal */}
+                      <div style={{
+                        pointerEvents: 'none',
+                        fontWeight: 600, fontSize: '13px',
+                        color: isDragging ? '#4338ca' : '#475569',
+                        marginBottom: '4px'
+                      }}>
+                        {isDragging
+                          ? 'Solte o arquivo aqui'
+                          : <><span style={{ color: '#6366f1', textDecoration: 'underline', textUnderlineOffset: '2px' }}>Clique para selecionar</span> ou arraste aqui</>}
+                      </div>
+
+                      {/* Texto de suporte */}
+                      <div style={{ pointerEvents: 'none', fontSize: '11px', color: '#94a3b8', marginBottom: '10px' }}>
+                        PDF · PNG · JPG · DOCX · MSG · EML &mdash; máx 15MB
+                      </div>
+
+                      {/* Badges de tipo */}
+                      <div style={{ pointerEvents: 'none', display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        {[
+                          { label: 'PDF', color: '#fee2e2', text: '#dc2626' },
+                          { label: 'Imagem', color: '#dcfce7', text: '#16a34a' },
+                          { label: 'Word', color: '#dbeafe', text: '#2563eb' },
+                          { label: 'E-mail', color: '#f3e8ff', text: '#9333ea' }
+                        ].map(({ label, color, text }) => (
+                          <span key={label} style={{
+                            fontSize: '9px',
+                            padding: '2px 8px',
+                            borderRadius: '20px',
+                            backgroundColor: color,
+                            color: text,
+                            fontWeight: 700
+                          }}>{label}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Input nativo oculto — controlado via ref */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.msg,.eml"
+                    onChange={handleFileChange}
+                    style={{ display: 'none' }}
+                    tabIndex={-1}
+                  />
+                </div>
               </div>
               
               <div className="modal-footer">
@@ -2551,6 +3564,31 @@ export default function App() {
                       alt="Comprovante" 
                       style={{ maxWidth: '100%', maxHeight: '120px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', backgroundColor: 'white' }}
                     />
+                  </div>
+                )}
+
+                {/* Exibição do Arquivo Anexo */}
+                {activeReceipt.attachmentName && activeReceipt.attachmentData && (
+                  <div style={{ marginTop: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '16px', textAlign: 'left' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-light)', display: 'block', marginBottom: '8px' }}>
+                      Arquivo Anexo Digitalizado
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-input)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                        <span style={{ fontSize: '20px' }}>📎</span>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={activeReceipt.attachmentName}>
+                          {activeReceipt.attachmentName}
+                        </span>
+                      </div>
+                      <a 
+                        href={activeReceipt.attachmentData} 
+                        download={activeReceipt.attachmentName}
+                        className="primary-btn" 
+                        style={{ height: '32px', padding: '0 12px', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+                      >
+                        Baixar
+                      </a>
+                    </div>
                   </div>
                 )}
               </div>

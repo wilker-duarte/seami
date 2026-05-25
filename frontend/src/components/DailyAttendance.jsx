@@ -19,6 +19,7 @@ import {
   UserCheck,
   Percent
 } from 'lucide-react';
+import { getStudents, getAttendance, saveAttendanceBulk } from '../supabaseClient';
 
 export default function DailyAttendance({ activeUser, initialTab, setActiveModule }) {
   const [classrooms] = useState(['Alegria', 'Carinho', 'União', 'Amizade', 'Felicidade']);
@@ -270,34 +271,32 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const fetchStudents = async () => {
     setLoadingStudents(true);
     try {
-      const res = await fetch('http://localhost:5000/api/students');
-      if (res.ok) {
-        const data = await res.json();
-        const filtered = data.filter(s => (selectedClassroom === 'all' || s.classroom === selectedClassroom) && s.active);
-        setStudents(filtered);
-        
-        const map = {};
-        filtered.forEach(s => {
-          map[s.id] = 'P';
-        });
-        
-        // Verifica se já existe chamada salva
-        const attendanceRes = await fetch(selectedClassroom === 'all' ? `http://localhost:5000/api/attendance?date=${attendanceDate}` : `http://localhost:5000/api/attendance?classroom=${selectedClassroom}&date=${attendanceDate}`);
-        if (attendanceRes.ok) {
-          const attendanceData = await attendanceRes.json();
-          if (attendanceData.length > 0) {
-            attendanceData.forEach(record => {
-              if (map[record.studentId] !== undefined) {
-                map[record.studentId] = record.status;
-              }
-            });
+      const data = await getStudents();
+      const filtered = data.filter(s => (selectedClassroom === 'all' || s.classroom === selectedClassroom) && s.active);
+      setStudents(filtered);
+      
+      const map = {};
+      filtered.forEach(s => {
+        map[s.id] = 'P';
+      });
+      
+      // Verifica se já existe chamada salva no Supabase
+      const attendanceData = await getAttendance({
+        classroom: selectedClassroom,
+        date: attendanceDate
+      });
+      
+      if (attendanceData && attendanceData.length > 0) {
+        attendanceData.forEach(record => {
+          if (map[record.studentId] !== undefined) {
+            map[record.studentId] = record.status;
           }
-        }
-        
-        setAttendanceMap(map);
+        });
       }
+      
+      setAttendanceMap(map);
     } catch (error) {
-      console.error(error);
+      console.error("[DailyAttendance] Erro ao obter alunos/chamadas:", error);
     } finally {
       setLoadingStudents(false);
     }
@@ -305,13 +304,10 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
 
   const fetchStudentsDirectory = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/students');
-      if (res.ok) {
-        const data = await res.json();
-        setStudentsDirectory(data.filter(s => s.active));
-      }
+      const data = await getStudents();
+      setStudentsDirectory(data.filter(s => s.active));
     } catch (error) {
-      console.error(error);
+      console.error("[DailyAttendance] Erro ao obter diretório de alunos:", error);
     }
   };
 
@@ -319,13 +315,10 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const fetchAllAttendanceForReports = async () => {
     setLoadingReports(true);
     try {
-      const res = await fetch('http://localhost:5000/api/attendance');
-      if (res.ok) {
-        const data = await res.json();
-        setAllAttendanceData(data);
-      }
+      const data = await getAttendance();
+      setAllAttendanceData(data || []);
     } catch (error) {
-      console.error(error);
+      console.error("[DailyAttendance] Erro ao obter chamadas para relatórios:", error);
     } finally {
       setLoadingReports(false);
     }
@@ -340,26 +333,27 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
 
   const checkExistingAttendance = async () => {
     try {
-      const res = await fetch(selectedClassroom === 'all' ? `http://localhost:5000/api/attendance?date=${attendanceDate}` : `http://localhost:5000/api/attendance?classroom=${selectedClassroom}&date=${attendanceDate}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.length > 0) {
-          const map = { ...attendanceMap };
-          data.forEach(record => {
-            map[record.studentId] = record.status;
-          });
-          setAttendanceMap(map);
-          showAlert('info', 'Dados de chamada existentes carregados para edição.');
-        } else {
-          const map = {};
-          students.forEach(s => {
-            map[s.id] = 'P';
-          });
-          setAttendanceMap(map);
-        }
+      const data = await getAttendance({
+        classroom: selectedClassroom,
+        date: attendanceDate
+      });
+      
+      if (data && data.length > 0) {
+        const map = { ...attendanceMap };
+        data.forEach(record => {
+          map[record.studentId] = record.status;
+        });
+        setAttendanceMap(map);
+        showAlert('info', 'Dados de chamada existentes carregados para edição.');
+      } else {
+        const map = {};
+        students.forEach(s => {
+          map[s.id] = 'P';
+        });
+        setAttendanceMap(map);
       }
     } catch (error) {
-      console.error(error);
+      console.error("[DailyAttendance] Erro ao checar chamada existente:", error);
     }
   };
 
@@ -392,29 +386,19 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
     }));
 
     try {
-      const res = await fetch('http://localhost:5000/api/attendance/bulk', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          date: attendanceDate,
-          classroom: selectedClassroom,
-          recordedBy: activeUser.name,
-          records
-        })
+      await saveAttendanceBulk({
+        date: attendanceDate,
+        classroom: selectedClassroom,
+        recordedBy: activeUser.name,
+        records
       });
 
-      if (res.ok) {
-        showAlert('success', 'Chamada salva com sucesso!');
-        fetchLogs(); 
-        fetchAllAttendanceForReports();
-      } else {
-        showAlert('error', 'Erro ao salvar chamada.');
-      }
+      showAlert('success', 'Chamada salva com sucesso!');
+      fetchLogs(); 
+      fetchAllAttendanceForReports();
     } catch (error) {
       console.error(error);
-      showAlert('error', 'Erro ao conectar ao servidor.');
+      showAlert('error', 'Erro ao salvar chamada no Supabase.');
     } finally {
       setSaving(false);
     }
@@ -423,21 +407,19 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const fetchLogs = async () => {
     setLoadingLogs(true);
     try {
-      let url = `http://localhost:5000/api/attendance?classroom=${consultClassroom}`;
-      if (consultStartDate) url += `&startDate=${consultStartDate}`;
-      if (consultEndDate) url += `&endDate=${consultEndDate}`;
+      const data = await getAttendance({
+        classroom: consultClassroom,
+        startDate: consultStartDate,
+        endDate: consultEndDate
+      });
       
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        const sorted = data.sort((a, b) => {
-          if (a.date !== b.date) return b.date.localeCompare(a.date);
-          return a.studentName.localeCompare(b.studentName);
-        });
-        setLogs(sorted);
-      }
+      const sorted = data.sort((a, b) => {
+        if (a.date !== b.date) return b.date.localeCompare(a.date);
+        return a.studentName.localeCompare(b.studentName);
+      });
+      setLogs(sorted);
     } catch (error) {
-      console.error(error);
+      console.error("[DailyAttendance] Erro ao buscar logs de presença:", error);
     } finally {
       setLoadingLogs(false);
     }

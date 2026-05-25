@@ -26,6 +26,7 @@ import {
   Image,
   File
 } from 'lucide-react';
+import { getOccurrences, getStudents, saveOccurrence, deleteOccurrence } from '../supabaseClient';
 
 export default function SeamiControl({ activeUser, activeModule, setActiveModule }) {
   // Categorias correspondentes às abas da planilha Controle Presença SEAMI
@@ -114,15 +115,12 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
   const fetchOccurrences = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/occurrences');
-      if (res.ok) {
-        const data = await res.json();
-        // Ordena por data (mais recente primeiro)
-        const sorted = data.sort((a, b) => b.date.localeCompare(a.date));
-        setOccurrences(sorted);
-      }
+      const data = await getOccurrences();
+      // Ordena por data (mais recente primeiro)
+      const sorted = data.sort((a, b) => b.date.localeCompare(a.date));
+      setOccurrences(sorted);
     } catch (error) {
-      console.error("Erro ao carregar ocorrências:", error);
+      console.error("Erro ao carregar ocorrências do Supabase:", error);
     } finally {
       setLoading(false);
     }
@@ -130,13 +128,10 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
 
   const fetchStudents = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/students');
-      if (res.ok) {
-        const data = await res.json();
-        setStudentsList(data.filter(s => s.active));
-      }
+      const data = await getStudents();
+      setStudentsList(data.filter(s => s.active));
     } catch (error) {
-      console.error(error);
+      console.error("[SeamiControl] Erro ao obter alunos:", error);
     }
   };
 
@@ -309,20 +304,14 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
 
   // Excluir registro
   const handleDeleteOccurrence = async (id) => {
-    if (window.confirm("Confirmar exclusão deste registro? Esta ação é permanente no SQLite.")) {
+    if (window.confirm("Confirmar exclusão deste registro? Esta ação é permanente no Supabase.")) {
       try {
-        const res = await fetch(`http://localhost:5000/api/occurrences/${id}`, {
-          method: 'DELETE'
-        });
-        if (res.ok) {
-          showAlert('success', 'Registro excluído com sucesso!');
-          fetchOccurrences();
-        } else {
-          showAlert('error', 'Falha ao excluir registro.');
-        }
+        await deleteOccurrence(id);
+        showAlert('success', 'Registro excluído com sucesso!');
+        fetchOccurrences();
       } catch (error) {
         console.error(error);
-        showAlert('error', 'Erro ao conectar ao servidor.');
+        showAlert('error', 'Falha ao excluir registro no Supabase.');
       }
     }
   };
@@ -342,6 +331,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     }
 
     const payload = {
+      id: isEditing ? editingId : undefined,
       type: formType,
       studentId: selectedStudent ? selectedStudent.id : `custom_${Date.now()}`,
       studentName: finalStudentName,
@@ -369,28 +359,13 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     };
 
     try {
-      const url = isEditing 
-        ? `http://localhost:5000/api/occurrences/${editingId}`
-        : 'http://localhost:5000/api/occurrences';
-      
-      const res = await fetch(url, {
-        method: isEditing ? 'PUT' : 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.ok) {
-        showAlert('success', isEditing ? 'Registro de caderno atualizado!' : 'Registro gravado no caderno!');
-        setIsFormModalOpen(false);
-        fetchOccurrences();
-      } else {
-        showAlert('error', 'Erro ao salvar informações.');
-      }
+      await saveOccurrence(payload);
+      showAlert('success', isEditing ? 'Registro de caderno atualizado!' : 'Registro gravado no caderno!');
+      setIsFormModalOpen(false);
+      fetchOccurrences();
     } catch (error) {
       console.error(error);
-      showAlert('error', 'Erro de conexão com o servidor.');
+      showAlert('error', 'Erro ao salvar informações no Supabase.');
     }
   };
 
@@ -476,37 +451,13 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
   return (
     <div className="tab-fade-in">
       
-      {/* Título & Descrição */}
-      <div className="panel-header-desc" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-        <div>
-          <h2 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: '24px', color: 'var(--slate-800)' }}>
-            Caderno SEAMI
-          </h2>
-          <p style={{ color: 'var(--slate-500)', fontSize: '14px', marginTop: '4px' }}>
-            Gerenciamento e controle unificado do Caderno Presença SEAMI.
-          </p>
-        </div>
-        <button 
-          onClick={handleOpenNewModal}
-          className="primary-btn"
-          style={{
-            padding: '10px 20px',
-            borderRadius: '8px',
-            backgroundColor: 'var(--brand-primary)',
-            color: 'white',
-            border: 'none',
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            boxShadow: '0 4px 10px rgba(99, 102, 241, 0.2)',
-            transition: 'all 0.2s'
-          }}
-        >
-          <Plus size={18} />
-          Registrar {categories.find(c => c.id === activeCategory)?.label}
-        </button>
+      <div className="panel-header-desc" style={{ marginBottom: '20px' }}>
+        <h2 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: '24px', color: 'var(--slate-800)' }}>
+          Caderno SEAMI
+        </h2>
+        <p style={{ color: 'var(--slate-500)', fontSize: '14px', marginTop: '4px' }}>
+          Gerenciamento e controle unificado do Caderno Presença SEAMI.
+        </p>
       </div>
 
       {alertMsg && (
@@ -686,10 +637,11 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                   <tr>
                     <th style={{ width: '12%' }}>Data</th>
                     <th style={{ width: '25%' }}>Nome do Aluno</th>
-                    <th style={{ width: '15%' }}>Sala/Turma</th>
-                    <th style={{ width: '13%' }}>Entrada</th>
-                    <th style={{ width: '13%' }}>Saída</th>
-                    <th style={{ width: '12%' }}>Responsável</th>
+                    <th style={{ width: '13%' }}>Sala/Turma</th>
+                    <th style={{ width: '12%' }}>Entrada</th>
+                    <th style={{ width: '12%' }}>Saída</th>
+                    <th style={{ width: '11%' }}>Responsável</th>
+                    <th style={{ width: '5%', textAlign: 'center' }}>Doc</th>
                     <th style={{ width: '10%', textAlign: 'center' }}>Ações</th>
                   </tr>
                 )}
@@ -806,39 +758,37 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                       </>
                     )}
 
-                    {/* Coluna Comum de Anexo (Exceto Amamentação) */}
-                    {activeCategory !== 'amamentacao' && (
-                      <td style={{ textAlign: 'center' }}>
-                        {occ.attachmentName ? (
-                          <button
-                            onClick={() => handleViewAttachment(occ)}
-                            title={`Visualizar: ${occ.attachmentName}`}
-                            style={{
-                              padding: '5px 10px',
-                              borderRadius: '20px',
-                              backgroundColor: '#eff6ff',
-                              color: 'var(--brand-primary)',
-                              border: '1px solid #bfdbfe',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              whiteSpace: 'nowrap',
-                              transition: 'all 0.15s'
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#dbeafe'; e.currentTarget.style.borderColor = '#93c5fd'; }}
-                            onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#eff6ff'; e.currentTarget.style.borderColor = '#bfdbfe'; }}
-                          >
-                            <Eye size={12} />
-                            Ver
-                          </button>
-                        ) : (
-                          <span style={{ color: 'var(--slate-300)', fontSize: '12px' }}>—</span>
-                        )}
-                      </td>
-                    )}
+                    {/* Coluna Comum de Anexo (Para Todas as Ocorrências) */}
+                    <td style={{ textAlign: 'center' }}>
+                      {occ.attachmentName ? (
+                        <button
+                          onClick={() => handleViewAttachment(occ)}
+                          title={`Visualizar: ${occ.attachmentName}`}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '20px',
+                            backgroundColor: '#eff6ff',
+                            color: 'var(--brand-primary)',
+                            border: '1px solid #bfdbfe',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.15s'
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#dbeafe'; e.currentTarget.style.borderColor = '#93c5fd'; }}
+                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#eff6ff'; e.currentTarget.style.borderColor = '#bfdbfe'; }}
+                        >
+                          <Eye size={12} />
+                          Ver
+                        </button>
+                      ) : (
+                        <span style={{ color: 'var(--slate-300)', fontSize: '12px' }}>—</span>
+                      )}
+                    </td>
 
                     {/* Ações Gerais do Registro */}
                     <td>
@@ -894,7 +844,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 1000,
+          zIndex: 9999,
           padding: '16px',
           animation: 'fadeIn 0.2s ease-out'
         }}>
@@ -1413,6 +1363,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                     >
                       {/* Ícone central */}
                       <div style={{
+                        pointerEvents: 'none',
                         width: '48px', height: '48px',
                         borderRadius: '14px',
                         backgroundColor: isDragging ? '#e0e7ff' : '#f1f5f9',
@@ -1426,6 +1377,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
 
                       {/* Texto principal */}
                       <div style={{
+                        pointerEvents: 'none',
                         fontWeight: 600, fontSize: '13px',
                         color: isDragging ? '#4338ca' : '#475569',
                         marginBottom: '4px'
@@ -1436,12 +1388,12 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                       </div>
 
                       {/* Texto de suporte */}
-                      <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '12px' }}>
+                      <div style={{ pointerEvents: 'none', fontSize: '11px', color: '#94a3b8', marginBottom: '12px' }}>
                         PDF · PNG · JPG · DOCX · MSG · EML &mdash; máx 15MB
                       </div>
 
                       {/* Badges de tipo */}
-                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ pointerEvents: 'none', display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
                         {[
                           { label: 'PDF', color: '#fee2e2', text: '#dc2626' },
                           { label: 'Imagem', color: '#dcfce7', text: '#16a34a' },
@@ -1475,13 +1427,17 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
               </div>
 
               {/* Ações formulário */}
-              <div style={{
+              <div className="modal-footer" style={{
                 display: 'flex',
                 justifyContent: 'flex-end',
+                flexWrap: 'wrap',
                 gap: '12px',
                 marginTop: '28px',
                 borderTop: '1px solid var(--slate-100)',
-                paddingTop: '20px'
+                paddingTop: '20px',
+                paddingRight: 0,
+                paddingLeft: 0,
+                paddingBottom: 0
               }}>
                 <button
                   type="button"
@@ -1489,9 +1445,9 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                   style={{
                     padding: '10px 18px',
                     borderRadius: '8px',
-                    backgroundColor: '#f1f5f9',
-                    color: '#475569',
-                    border: 'none',
+                    backgroundColor: 'var(--bg-card)',
+                    color: 'var(--text-secondary)',
+                    border: '1px solid var(--border-color)',
                     fontWeight: 600,
                     cursor: 'pointer'
                   }}
@@ -1532,7 +1488,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 1000,
+          zIndex: 9999,
           padding: '16px',
           animation: 'fadeIn 0.2s ease-out'
         }}>
