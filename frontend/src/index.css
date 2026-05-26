@@ -652,8 +652,7 @@ body.dark-mode .badge-auxiliar {
 .panel-section {
     display: none;
     opacity: 0;
-    transform: translateY(12px);
-    animation: fadeSlideIn var(--transition-slow) forwards;
+    animation: fadeIn var(--transition-slow) forwards;
 }
 
 .panel-section.active {
@@ -666,14 +665,12 @@ body.dark-mode .badge-auxiliar {
 .panel-section:has(.modal-overlay.active),
 .panel-section:has(div[style*="position: fixed"]) {
     z-index: 9999 !important;
-    transform: none !important;
     opacity: 1 !important;
 }
 
-@keyframes fadeSlideIn {
+@keyframes fadeIn {
     to {
         opacity: 1;
-        transform: translateY(0);
     }
 }
 

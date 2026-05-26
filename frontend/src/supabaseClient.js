@@ -1,102 +1,338 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Carrega as credenciais das variáveis de ambiente injetadas pelo Vite
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    '[Supabase] Aviso: VITE_SUPABASE_URL ou VITE_SUPABASE_PUBLISHABLE_KEY não foram definidos no arquivo .env!'
-  );
+  console.warn('[Supabase] VITE_SUPABASE_URL ou VITE_SUPABASE_PUBLISHABLE_KEY não definidos!');
 }
 
-// Cria a instância do cliente Supabase
 export const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseAnonKey || 'placeholder');
 
+// Mapeamento local das turmas para compatibilidade visual imediata
+const classesNameMap = {
+  '1': 'Alegria',
+  '2': 'Carinho',
+  '3': 'União',
+  '4': 'Amizade',
+  '5': 'Felicidade'
+};
+
+const classesIdMap = {
+  'Alegria': '1',
+  'Carinho': '2',
+  'União': '3',
+  'Amizade': '4',
+  'Felicidade': '5'
+};
+
 // ==========================================
-// MÉTODOS DE ALUNOS (STUDENTS)
+// UTILITÁRIO DE SANITIZAÇÃO DE ENTRADAS
 // ==========================================
 
-export async function getStudents() {
+export function sanitizeInput(str) {
+  if (str === undefined || str === null) return '';
+  if (typeof str !== 'string') return String(str);
+  // Remove tags HTML/JS para evitar ataques XSS
+  return str
+    .replace(/<[^>]*>/g, '')
+    .trim();
+}
+
+// ==========================================
+// MÉTODOS DE AUTENTICAÇÃO REAL (SUPABASE AUTH)
+// ==========================================
+
+export async function signIn(email, password) {
+  const cleanEmail = sanitizeInput(email);
+  console.log('[Supabase Client] signIn chamado com:', { email: cleanEmail });
+  
+  // Limpeza proativa de qualquer lock ou sessão anterior concorrente para impedir travamentos de concorrência do GoTrue
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.removeItem('seami-auth-token');
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && (key.endsWith('-lock') || key.includes('auth-token-lock') || key.includes('seami-auth'))) {
+          window.localStorage.removeItem(key);
+        }
+      }
+    } catch (e) {
+      console.warn('[Supabase Client] Falha ao efetuar limpeza proativa antes do login:', e);
+    }
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password
+    });
+    console.log('[Supabase Client] signIn retorno:', { data, error });
+    if (error) {
+      console.error('[Supabase Auth] Erro ao autenticar:', error.message);
+      throw error;
+    }
+    return data;
+  } catch (err) {
+    console.error('[Supabase Client] signIn capturou erro:', err);
+    throw err;
+  }
+}
+
+export async function signUp({ email, password, name, role, description = '' }) {
+  const cleanEmail = sanitizeInput(email);
+  const cleanName = sanitizeInput(name);
+  const cleanDesc = sanitizeInput(description);
+  
+  const { data, error } = await supabase.auth.signUp({
+    email: cleanEmail,
+    password,
+    options: {
+      data: {
+        name: cleanName,
+        role: role
+      }
+    }
+  });
+
+  if (error) {
+    console.error('[Supabase Auth] Erro ao criar conta:', error.message);
+    throw error;
+  }
+
+  // Cria o registro correspondente na tabela public.pessoas para visibilidade do app
+  if (data?.user) {
+    const { error: dbErr } = await supabase.from('pessoas').insert({
+      id: data.user.id,
+      name: cleanName,
+      type: role,
+      active: true,
+      avatar: role === 'diretora' ? '👩‍💼' : role === 'pedagoga' ? '👩‍🏫' : '👩',
+      description: cleanDesc,
+      email: cleanEmail
+    });
+    
+    if (dbErr) {
+      console.error('[Supabase] Erro ao espelhar perfil de usuário:', dbErr.message);
+      throw dbErr;
+    }
+  }
+
+  return data;
+}
+
+export async function signOut() {
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    console.error('[Supabase Auth] Erro no logout:', error.message);
+    throw error;
+  }
+  return true;
+}
+
+export async function getCurrentUserProfile(email) {
   const { data, error } = await supabase
-    .from('students')
+    .from('pessoas')
+    .select('*')
+    .eq('email', email)
+    .single();
+  
+  if (error) {
+    console.error('[Supabase] Erro ao obter perfil de usuário:', error.message);
+    throw error;
+  }
+  
+  return {
+    ...data,
+    role: data.type === 'secretaria' ? 'diretora' : data.type, // Map para compatibilidade
+    desc: data.description // Map para compatibilidade
+  };
+}
+
+// ==========================================
+// MÉTODOS DE TURMAS
+// ==========================================
+
+export async function getTurmas() {
+  const { data, error } = await supabase
+    .from('turmas')
     .select('*')
     .order('name');
+  
   if (error) {
-    console.error('[Supabase] Erro ao obter alunos:', error);
+    console.error('[Supabase] Erro ao obter turmas:', error.message);
     throw error;
   }
   return data;
 }
 
-export async function saveStudent(student) {
+export async function saveTurma(turma) {
   const payload = {
-    id: student.id || `student_${Date.now()}`,
-    name: student.name,
-    classroom: student.classroom,
-    active: student.active ?? true
+    id: turma.id || String(Date.now() + Math.floor(Math.random() * 1000)),
+    name: sanitizeInput(turma.name),
+    age_group: sanitizeInput(turma.age_group)
   };
   const { data, error } = await supabase
-    .from('students')
+    .from('turmas')
     .upsert(payload)
     .select()
     .single();
+  
   if (error) {
-    console.error('[Supabase] Erro ao salvar aluno:', error);
+    console.error('[Supabase] Erro ao salvar turma:', error.message);
     throw error;
   }
   return data;
+}
+
+export async function deleteTurma(id) {
+  const { error } = await supabase
+    .from('turmas')
+    .delete()
+    .eq('id', id);
+  
+  if (error) {
+    console.error('[Supabase] Erro ao deletar turma:', error.message);
+    throw error;
+  }
+  return true;
+}
+
+// ==========================================
+// MÉTODOS DE PESSOAS (ALUNOS E EQUIPE UNIFICADA)
+// ==========================================
+
+export async function getPessoas(type) {
+  let query = supabase.from('pessoas').select('*').order('name');
+  if (type) {
+    query = query.eq('type', type);
+  }
+  const { data, error } = await query;
+  if (error) {
+    console.error('[Supabase] Erro ao obter pessoas:', error.message);
+    throw error;
+  }
+  return data;
+}
+
+export async function getStudents() {
+  const alumnos = await getPessoas('aluno');
+  return alumnos.map(a => ({
+    ...a,
+    studentId: a.id, // Compatibilidade
+    classroom: classesNameMap[a.turma_id] || 'Alegria', // Compatibilidade visual
+    shift: a.shift || 'integral'
+  }));
+}
+
+export async function saveStudent(student) {
+  const turmaId = student.turma_id || classesIdMap[student.classroom] || '1';
+  const payload = {
+    id: student.id || String(Date.now() + Math.floor(Math.random() * 1000)),
+    name: sanitizeInput(student.name),
+    type: 'aluno',
+    active: student.active ?? true,
+    avatar: '👦',
+    turma_id: turmaId,
+    shift: student.shift || 'integral'
+  };
+  
+  const { data, error } = await supabase
+    .from('pessoas')
+    .upsert(payload)
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('[Supabase] Erro ao salvar aluno:', error.message);
+    throw error;
+  }
+
+  return {
+    ...data,
+    classroom: classesNameMap[data.turma_id] || 'Alegria',
+    shift: data.shift || 'integral'
+  };
 }
 
 export async function toggleStudentActive(studentId) {
   const { data: student, error: getErr } = await supabase
-    .from('students')
+    .from('pessoas')
     .select('active')
     .eq('id', studentId)
     .single();
   if (getErr) {
-    console.error('[Supabase] Erro ao obter status do aluno:', getErr);
+    console.error('[Supabase] Erro ao obter status do aluno:', getErr.message);
     throw getErr;
   }
 
   const { data, error } = await supabase
-    .from('students')
+    .from('pessoas')
     .update({ active: !student.active })
     .eq('id', studentId)
     .select()
     .single();
+  
   if (error) {
-    console.error('[Supabase] Erro ao alternar status do aluno:', error);
+    console.error('[Supabase] Erro ao alternar status do aluno:', error.message);
     throw error;
   }
-  return data;
+
+  return {
+    ...data,
+    classroom: classesNameMap[data.turma_id] || 'Alegria'
+  };
 }
 
 export async function deleteStudent(studentId) {
   const { error } = await supabase
-    .from('students')
+    .from('pessoas')
     .delete()
     .eq('id', studentId);
   if (error) {
-    console.error('[Supabase] Erro ao deletar aluno:', error);
+    console.error('[Supabase] Erro ao deletar aluno:', error.message);
     throw error;
   }
   return true;
 }
 
 export async function saveStudentBulk(studentsArray) {
-  const records = studentsArray.map(s => ({
-    id: s.id || `student_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-    name: s.name,
-    classroom: s.classroom,
-    active: s.active ?? true
-  }));
+  // 1. Busca todos os alunos existentes no banco para checar duplicatas por nome
+  const { data: existingPessoas, error: getErr } = await supabase
+    .from('pessoas')
+    .select('*')
+    .eq('type', 'aluno');
+    
+  if (getErr) throw getErr;
+  
+  const existingMap = new Map();
+  existingPessoas?.forEach(p => {
+    existingMap.set(p.name.trim().toLowerCase(), p);
+  });
+
+  const records = studentsArray.map((s, index) => {
+    const normName = s.name.trim().toLowerCase();
+    const existing = existingMap.get(normName);
+    const turmaId = s.turma_id || classesIdMap[s.classroom] || '1';
+    
+    return {
+      id: existing ? existing.id : (s.id || String(Date.now() + Math.floor(Math.random() * 1000) + index)),
+      name: sanitizeInput(s.name),
+      type: 'aluno',
+      active: s.active ?? true,
+      avatar: '👦',
+      turma_id: turmaId,
+      shift: s.shift || existing?.shift || 'integral'
+    };
+  });
+  
   const { data, error } = await supabase
-    .from('students')
+    .from('pessoas')
     .upsert(records)
     .select();
+  
   if (error) {
-    console.error('[Supabase] Erro na importação de alunos:', error);
+    console.error('[Supabase] Erro na importação de alunos:', error.message);
     throw error;
   }
   return data;
@@ -112,45 +348,54 @@ export async function getOccurrences() {
     .select('*')
     .order('date', { ascending: false });
   if (error) {
-    console.error('[Supabase] Erro ao obter ocorrências:', error);
+    console.error('[Supabase] Erro ao obter ocorrências:', error.message);
     throw error;
   }
-  return data;
+  return data.map(o => ({
+    ...o,
+    studentId: o.student_id,
+    studentName: o.studentname || o.studentName || '',  // normaliza nome da coluna
+    classroom: classesNameMap[o.turma_id] || o.classroom || 'Alegria'
+  }));
 }
 
+
 export async function saveOccurrence(occ) {
-  const isEditing = !!occ.id;
-  const id = occ.id || `${occ.type}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  const id = occ.id || String(Date.now() + Math.floor(Math.random() * 1000));
+  const turmaId = occ.turma_id || classesIdMap[occ.classroom] || '1';
   
   const payload = {
     id,
     type: occ.type,
-    studentId: occ.studentId,
-    studentName: occ.studentName,
-    classroom: occ.classroom,
+    student_id: occ.studentId || occ.student_id,
+    turma_id: turmaId,
+    studentname: sanitizeInput(occ.studentName || occ.studentname),  // coluna: studentname
+    classroom: classesNameMap[turmaId] || occ.classroom || 'Alegria',
     date: occ.date,
     time: occ.time || null,
-    motive: occ.motive || null,
-    guardian: occ.guardian || null,
-    staff: occ.staff || null,
-    obs: occ.obs || null,
+    motive: sanitizeInput(occ.motive || null),
+    guardian: sanitizeInput(occ.guardian || null),
+    staff: sanitizeInput(occ.staff || null),
+    obs: sanitizeInput(occ.obs || null),
     signature: occ.signature || null,
     justified: occ.justified || null,
     notified: occ.notified || null,
-    hasReturn: occ.hasReturn || null,
-    returnTime: occ.returnTime || null,
-    timeIn: occ.timeIn || null,
-    timeOut: occ.timeOut || null,
-    startDate: occ.startDate || null,
-    days: occ.days || null,
-    endDate: occ.endDate || null,
-    cid: occ.cid || null,
-    filePreview: occ.filePreview || null,
-    recordedBy: occ.recordedBy || null,
-    attachmentName: occ.attachmentName || null,
-    attachmentType: occ.attachmentType || null,
-    attachmentData: occ.attachmentData || null
+    hasReturn: occ.hasReturn || null,       // coluna: "hasReturn"
+    returnTime: occ.returnTime || null,     // coluna: "returnTime"
+    timeIn: occ.timeIn || null,             // coluna: "timeIn"
+    timeOut: occ.timeOut || null,           // coluna: "timeOut"
+    startDate: occ.startDate || null,       // coluna: "startDate"
+    days: occ.days ? parseInt(occ.days) : null,
+    endDate: occ.endDate || null,           // coluna: "endDate"
+    cid: sanitizeInput(occ.cid || null),
+    filePreview: occ.filePreview || null,   // coluna: "filePreview"
+    recordedBy: sanitizeInput(occ.recordedBy || null),  // coluna: "recordedBy"
+    attachmentName: occ.attachmentName || null,         // coluna: "attachmentName"
+    attachmentType: occ.attachmentType || null,         // coluna: "attachmentType"
+    attachmentData: occ.attachmentData || null          // coluna: "attachmentData"
   };
+
+  console.log('[saveOccurrence] Salvando tipo:', payload.type, '| student_id:', payload.student_id);
 
   const { data, error } = await supabase
     .from('occurrences')
@@ -158,11 +403,17 @@ export async function saveOccurrence(occ) {
     .select()
     .single();
   if (error) {
-    console.error('[Supabase] Erro ao salvar ocorrência:', error);
+    console.error('[Supabase] Erro ao salvar ocorrência:', error.message, '| code:', error.code, '| details:', error.details);
     throw error;
   }
-  return data;
+  return {
+    ...data,
+    studentId: data.student_id,
+    studentName: data.studentname,  // normaliza de volta para o app
+    classroom: classesNameMap[data.turma_id] || data.classroom || 'Alegria'
+  };
 }
+
 
 export async function deleteOccurrence(id) {
   const { error } = await supabase
@@ -170,7 +421,7 @@ export async function deleteOccurrence(id) {
     .delete()
     .eq('id', id);
   if (error) {
-    console.error('[Supabase] Erro ao deletar ocorrência:', error);
+    console.error('[Supabase] Erro ao deletar ocorrência:', error.message);
     throw error;
   }
   return true;
@@ -184,7 +435,8 @@ export async function getAttendance(filters = {}) {
   let query = supabase.from('attendance').select('*');
   
   if (filters.classroom && filters.classroom !== 'all') {
-    query = query.eq('classroom', filters.classroom);
+    const tId = classesIdMap[filters.classroom] || filters.classroom;
+    query = query.eq('turma_id', tId);
   }
   if (filters.date) {
     query = query.eq('date', filters.date);
@@ -198,35 +450,50 @@ export async function getAttendance(filters = {}) {
   
   const { data, error } = await query;
   if (error) {
-    console.error('[Supabase] Erro ao buscar chamada:', error);
+    console.error('[Supabase] Erro ao buscar chamada:', error.message);
     throw error;
   }
-  return data;
+  return data.map(a => ({
+    ...a,
+    studentId: a.student_id,
+    classroom: classesNameMap[a.turma_id] || a.classroom || 'Alegria'
+  }));
 }
 
 export async function saveAttendanceBulk({ date, classroom, recordedBy, records }) {
+  const fallbackTId = classesIdMap[classroom] || '1';
   const dbRecords = records.map(r => {
-    const studentClassroom = r.classroom || classroom;
+    const studentId = r.studentId || r.student_id;
+    // Usa o turma_id individual do aluno; só usa fallback se não vier
+    const tId = r.turma_id || fallbackTId;
+    const cleanDate = date.replace(/-/g, '');
     return {
-      id: `att_${r.studentId}_${date}`,
+      id: `${studentId}${cleanDate}`,
       date,
-      studentId: r.studentId,
-      studentName: r.studentName,
-      classroom: studentClassroom,
+      student_id: studentId,
+      turma_id: tId,
+      studentname: sanitizeInput(r.studentName || r.name),
+      classroom: r.classroom || classesNameMap[tId] || classroom,
       status: r.status,
-      recordedBy: recordedBy || 'Professor'
+      recordedBy: sanitizeInput(recordedBy || 'Professor')
     };
   });
 
+  console.log('[saveAttendanceBulk] Enviando', dbRecords.length, 'registros | data:', date);
+
   const { data, error } = await supabase
     .from('attendance')
-    .upsert(dbRecords)
+    .upsert(dbRecords, { onConflict: 'id' })
     .select();
   if (error) {
-    console.error('[Supabase] Erro ao salvar chamada em lote:', error);
+    console.error('[Supabase] Erro ao salvar chamada em lote:', error.message, '| Detalhes:', error.details, '| Hint:', error.hint, '| Code:', error.code);
     throw error;
   }
-  return data;
+  return data.map(a => ({
+    ...a,
+    studentId: a.student_id,
+    classroom: classesNameMap[a.turma_id] || a.classroom || 'Alegria'
+  }));
 }
 
 // ==========================================
@@ -238,7 +505,7 @@ export async function getSettings() {
     .from('settings')
     .select('*');
   if (error) {
-    console.error('[Supabase] Erro ao obter configurações:', error);
+    console.error('[Supabase] Erro ao obter configurações:', error.message);
     throw error;
   }
   const settings = {};
@@ -258,14 +525,14 @@ export async function saveSettings(settingsObj) {
     .upsert(dbRecords)
     .select();
   if (error) {
-    console.error('[Supabase] Erro ao salvar configurações:', error);
+    console.error('[Supabase] Erro ao salvar configurações:', error.message);
     throw error;
   }
   return data;
 }
 
 // ==========================================
-// MÉTODOS DE MANUTENÇÃO (WIPE, RESET, SEED)
+// MÉTODOS DE MANUTENÇÃO E GESTÃO
 // ==========================================
 
 export async function wipeHistory() {
@@ -274,36 +541,30 @@ export async function wipeHistory() {
     .delete()
     .neq('id', '');
   if (error) {
-    console.error('[Supabase] Erro ao limpar histórico de ocorrências:', error);
+    console.error('[Supabase] Erro ao limpar histórico de ocorrências:', error.message);
     throw error;
   }
   return true;
 }
 
 export async function resetDatabase() {
-  // Limpa tudo por completo
+  // Limpa tudo por completo respeitando constraints relacionais
   const deleteOcc = supabase.from('occurrences').delete().neq('id', '');
-  const deleteStud = supabase.from('students').delete().neq('id', '');
-  const deleteSet = supabase.from('settings').delete().neq('id', '');
-  const deleteStf = supabase.from('staff').delete().neq('id', '');
+  const deleteAtt = supabase.from('attendance').delete().neq('id', '');
+  const deleteTC = supabase.from('turma_cuidadores').delete().neq('turma_id', '');
   
-  await Promise.all([deleteOcc, deleteStud, deleteSet, deleteStf]);
+  await Promise.all([deleteOcc, deleteAtt, deleteTC]);
 
-  // Restaura configurações padrões iniciais
+  // Limpa apenas alunos para manter cuidadores autenticados intactos
+  await supabase.from('pessoas').delete().eq('type', 'aluno');
+
+  // Restaura configurações padrões
   await saveSettings({
     theme: 'light',
     activeRole: 'diretora',
     activeUserName: 'Secretária Ana Clara',
     activeUserAvatar: '👩‍💼'
   });
-
-  // Restaura funcionários padrões
-  const defaultStaff = [
-    { id: 'staff_1', name: 'Secretária Ana Clara', role: 'diretora', avatar: '👩‍💼', desc: 'Acesso total e configurações' },
-    { id: 'staff_2', name: 'Pedagoga Marina', role: 'pedagoga', avatar: '👩‍🏫', desc: 'Insights e relatórios pedagógicos' },
-    { id: 'staff_3', name: 'Auxiliar Jéssica', role: 'auxiliar', avatar: '👩', desc: 'Apenas registro de ocorrências' }
-  ];
-  await supabase.from('staff').insert(defaultStaff);
 
   return true;
 }
@@ -343,6 +604,7 @@ export async function seedDemoData() {
     const student = activeStudents[Math.floor(Math.random() * activeStudents.length)];
     const randType = Math.random();
     const occId = `occ_seed_${Math.random().toString(36).substr(2, 9)}`;
+    const tId = student.turma_id || '1';
 
     if (randType < 0.40) {
       // ATRASO
@@ -351,7 +613,8 @@ export async function seedDemoData() {
       records.push({
         id: occId,
         type: 'atraso',
-        studentId: student.id,
+        student_id: student.id,
+        turma_id: tId,
         studentName: student.name,
         classroom: student.classroom,
         date: dateStr,
@@ -369,7 +632,8 @@ export async function seedDemoData() {
       records.push({
         id: occId,
         type: 'falta',
-        studentId: student.id,
+        student_id: student.id,
+        turma_id: tId,
         studentName: student.name,
         classroom: student.classroom,
         date: dateStr,
@@ -386,7 +650,8 @@ export async function seedDemoData() {
       records.push({
         id: occId,
         type: 'saida',
-        studentId: student.id,
+        student_id: student.id,
+        turma_id: tId,
         studentName: student.name,
         classroom: student.classroom,
         date: dateStr,
@@ -406,7 +671,8 @@ export async function seedDemoData() {
       records.push({
         id: occId,
         type: 'amamentacao',
-        studentId: student.id,
+        student_id: student.id,
+        turma_id: tId,
         studentName: student.name,
         classroom: student.classroom,
         date: dateStr,
@@ -425,7 +691,8 @@ export async function seedDemoData() {
       records.push({
         id: occId,
         type: 'atestado',
-        studentId: student.id,
+        student_id: student.id,
+        turma_id: tId,
         studentName: student.name,
         classroom: student.classroom,
         date: dateStr,
@@ -451,7 +718,8 @@ export async function seedDemoData() {
     records.push({
       id: `occ_active_atestado_karina`,
       type: 'atestado',
-      studentId: karina.id,
+      student_id: karina.id,
+      turma_id: karina.turma_id,
       studentName: karina.name,
       classroom: karina.classroom,
       date: activeAtestadoDate.toISOString().split("T")[0],
@@ -476,7 +744,8 @@ export async function seedDemoData() {
         records.push({
           id: `occ_recurrent_falta_gabriel_${count}`,
           type: 'falta',
-          studentId: gabriel.id,
+          student_id: gabriel.id,
+          turma_id: gabriel.turma_id,
           studentName: gabriel.name,
           classroom: gabriel.classroom,
           date: d.toISOString().split("T")[0],
@@ -495,7 +764,7 @@ export async function seedDemoData() {
     .insert(records)
     .select();
   if (error) {
-    console.error('[Supabase] Erro ao semear massa de testes:', error);
+    console.error('[Supabase] Erro ao semear massa de testes:', error.message);
     throw error;
   }
   return records.length;
@@ -507,66 +776,71 @@ export async function seedDemoData() {
 
 export async function getStaff() {
   try {
-    const { data, error } = await supabase
-      .from('staff')
-      .select('*')
-      .order('name');
-    if (error) {
-      console.warn('[Supabase] Tabela staff não pôde ser lida, usando equipe de backup:', error);
-      return [
-        { id: 'staff_1', name: 'Secretária Ana Clara', role: 'diretora', avatar: '👩‍💼', desc: 'Acesso total e configurações' },
-        { id: 'staff_2', name: 'Pedagoga Marina', role: 'pedagoga', avatar: '👩‍🏫', desc: 'Insights e relatórios pedagógicos' },
-        { id: 'staff_3', name: 'Auxiliar Jéssica', role: 'auxiliar', avatar: '👩', desc: 'Apenas registro de ocorrências' }
-      ];
-    }
-    return data && data.length > 0 ? data : [
-      { id: 'staff_1', name: 'Secretária Ana Clara', role: 'diretora', avatar: '👩‍💼', desc: 'Acesso total e configurações' },
-      { id: 'staff_2', name: 'Pedagoga Marina', role: 'pedagoga', avatar: '👩‍🏫', desc: 'Insights e relatórios pedagógicos' },
-      { id: 'staff_3', name: 'Auxiliar Jéssica', role: 'auxiliar', avatar: '👩', desc: 'Apenas registro de ocorrências' }
-    ];
+    const all = await getPessoas();
+    return all
+      .filter(p => p.type !== 'aluno')
+      .map(member => ({
+        ...member,
+        role: member.type, // Map para compatibilidade
+        desc: member.description || '' // Map para compatibilidade
+      }));
   } catch (err) {
-    console.warn('[Supabase] Falha ao obter equipe, retornando lista padrão.', err);
+    console.warn('[Supabase] Falha ao obter equipe. Usando equipe padrão.', err);
     return [
-      { id: 'staff_1', name: 'Secretária Ana Clara', role: 'diretora', avatar: '👩‍💼', desc: 'Acesso total e configurações' },
-      { id: 'staff_2', name: 'Pedagoga Marina', role: 'pedagoga', avatar: '👩‍🏫', desc: 'Insights e relatórios pedagógicos' },
-      { id: 'staff_3', name: 'Auxiliar Jéssica', role: 'auxiliar', avatar: '👩', desc: 'Apenas registro de ocorrências' }
+      { id: '1', name: 'Secretária Ana Clara', role: 'diretora', avatar: '👩‍💼', desc: 'Acesso total e configurações', type: 'secretaria' },
+      { id: '2', name: 'Pedagoga Marina', role: 'pedagoga', avatar: '👩‍🏫', desc: 'Insights e relatórios pedagógicos', type: 'pedagoga' },
+      { id: '3', name: 'Auxiliar Jéssica', role: 'auxiliar', avatar: '👩', desc: 'Apenas registro de ocorrências', type: 'auxiliar' }
     ];
   }
 }
 
 export async function saveStaff(member) {
   const payload = {
-    id: member.id || `staff_${Date.now()}`,
-    name: member.name,
-    role: member.role,
+    id: member.id || String(Date.now() + Math.floor(Math.random() * 1000)),
+    name: sanitizeInput(member.name),
+    type: member.role || 'auxiliar',
     avatar: member.avatar || '👩‍💼',
-    desc: member.desc || ''
+    description: sanitizeInput(member.desc || ''),
+    active: true
   };
+  
   try {
     const { data, error } = await supabase
-      .from('staff')
+      .from('pessoas')
       .upsert(payload)
       .select()
       .single();
     if (error) {
-      console.warn('[Supabase] Erro ao salvar funcionário no banco. Simulando local.', error);
-      return payload;
+      console.warn('[Supabase] Erro ao salvar funcionário no banco. Simulando local.', error.message);
+      return {
+        ...payload,
+        role: payload.type,
+        desc: payload.description
+      };
     }
-    return data;
+    return {
+      ...data,
+      role: data.type,
+      desc: data.description
+    };
   } catch (err) {
     console.warn('[Supabase] Falha ao salvar funcionário. Simulando local.', err);
-    return payload;
+    return {
+      ...payload,
+      role: payload.type,
+      desc: payload.description
+    };
   }
 }
 
 export async function deleteStaff(id) {
   try {
     const { error } = await supabase
-      .from('staff')
+      .from('pessoas')
       .delete()
       .eq('id', id);
     if (error) {
-      console.warn('[Supabase] Erro ao deletar funcionário no banco. Simulando local.', error);
+      console.warn('[Supabase] Erro ao deletar funcionário no banco. Simulando local.', error.message);
       return true;
     }
     return true;

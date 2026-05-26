@@ -1,15 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Clock, CalendarX, HeartHandshake, TrendingUp, GraduationCap } from 'lucide-react';
-import { API_BASE_URL } from '../context/AppContext';
+import { useAppContext } from '../context/AppContext';
+import { getOccurrences } from '../supabaseClient';
 
 export default function InsightsPage() {
+  const { students } = useAppContext();
   const [occurrences, setOccurrences] = useState([]);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/occurrences`)
-      .then(r => r.json())
-      .then(setOccurrences)
-      .catch(err => console.error('[InsightsPage]', err));
+    const load = async () => {
+      try {
+        const occData = await getOccurrences();
+        setOccurrences(occData || []);
+      } catch (err) {
+        console.error('[InsightsPage] Erro ao carregar ocorrências:', err);
+      }
+    };
+    load();
   }, []);
 
   const today = new Date().toISOString().split('T')[0];

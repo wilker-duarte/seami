@@ -112,6 +112,15 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     fetchStudents();
   }, []);
 
+  // Recarrega quando a aba volta a ficar visível (após salvar pelo modal do Header)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) fetchOccurrences();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   const fetchOccurrences = async () => {
     setLoading(true);
     try {
@@ -432,7 +441,8 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
   const filteredOccurrences = occurrences.filter(occ => {
     const isCategoryMatch = occ.type === activeCategory;
     const isRoomMatch = filterRoom === 'all' || occ.classroom === filterRoom;
-    const isSearchMatch = searchNameQuery === '' || occ.studentName.toLowerCase().includes(searchNameQuery.toLowerCase());
+    const name = (occ.studentName || occ.studentname || '').toLowerCase();
+    const isSearchMatch = searchNameQuery === '' || name.includes(searchNameQuery.toLowerCase());
     return isCategoryMatch && isRoomMatch && isSearchMatch;
   });
 
@@ -528,10 +538,25 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
 
       {/* ÁREA DE CONSULTA DA SEÇÃO ATIVA */}
       <div className="filter-card" style={{ marginBottom: '24px' }}>
-        <div className="filter-card-header" style={{ borderBottom: '1px solid var(--slate-100)', padding: '12px 20px' }}>
+        <div className="filter-card-header" style={{ borderBottom: '1px solid var(--slate-100)', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="filter-card-title">
             <Search size={16} style={{ color: 'var(--brand-primary)' }} />
             <span style={{ fontSize: '14px', fontWeight: 600 }}>Consultar e Filtrar registros de {categories.find(c => c.id === activeCategory)?.label}</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={fetchOccurrences}
+              disabled={loading}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', border: '1px solid var(--slate-200)', background: 'white', fontSize: '12px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', color: 'var(--slate-600)', opacity: loading ? 0.6 : 1 }}
+            >
+              <span style={{ fontSize: '14px' }}>🔄</span> Atualizar
+            </button>
+            <button
+              onClick={handleOpenNewModal}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', border: 'none', background: 'var(--brand-primary)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', color: 'white' }}
+            >
+              <Plus size={14} /> Novo Registro
+            </button>
           </div>
         </div>
 

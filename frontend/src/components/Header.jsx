@@ -19,7 +19,7 @@ export default function Header({
   setIsSidebarOpen, 
   onQuickAction,
   onSelectStudentOccurrence,
-  staffList = []
+  onLogout
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -178,36 +178,14 @@ export default function Header({
           </button>
           
           {isRoleDropdownOpen && (
-            <div className="role-dropdown-menu active" style={{ minWidth: '240px' }}>
-              {staffList.map(member => (
-                <a 
-                  key={member.id}
-                  href="#" 
-                  className={`role-option ${activeUser.name === member.name && activeUser.role === member.role ? 'active' : ''}`}
-                  onClick={(e) => { 
-                    e.preventDefault(); 
-                    handleRoleSelect(member.role, member.name, member.avatar); 
-                  }}
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px', padding: '10px 14px' }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                    <span className={roleBadgeClass[member.role] || 'role-badge'}>
-                      {roleLabels[member.role] || 'Membro'}
-                    </span>
-                    <span style={{ fontSize: '18px' }}>{member.avatar}</span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                    <span style={{ fontWeight: '600', fontSize: '13px', color: 'var(--slate-800)' }}>
-                      {member.name}
-                    </span>
-                    {member.desc && (
-                      <span style={{ fontSize: '11px', color: 'var(--slate-500)', lineHeight: '1.2' }}>
-                        {member.desc}
-                      </span>
-                    )}
-                  </div>
-                </a>
-              ))}
+            <div className="role-dropdown-menu active" style={{ minWidth: '220px', padding: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '32px' }}>{activeUser.avatar || '👩‍💼'}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ fontWeight: '700', fontSize: '13px', color: 'var(--slate-800)', lineHeight: '1.2' }}>{activeUser.name}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--slate-500)', wordBreak: 'break-all' }}>{activeUser.email || 'Secretaria SEAMI'}</span>
+                </div>
+              </div>
             </div>
           )}
         </div>

@@ -1,7 +1,9 @@
 import React from 'react';
 import { ClipboardCheck, BookOpen, LayoutDashboard } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
-export default function HomePage({ navigate }) {
+export default function HomePage() {
+  const navigate = useNavigate();
   return (
     <section
       className="panel-section active"
@@ -39,7 +41,7 @@ export default function HomePage({ navigate }) {
         {/* Card Módulo I */}
         <div
           className="module-landing-card animate-fade-in"
-          onClick={() => navigate('attendance')}
+          onClick={() => navigate('/chamada')}
           style={{
             backgroundColor: 'white',
             borderRadius: '20px',
@@ -76,7 +78,7 @@ export default function HomePage({ navigate }) {
           <button
             className="primary-btn"
             style={{ width: '100%', marginTop: '12px', justifyContent: 'center', backgroundColor: '#10b981', border: 'none' }}
-            onClick={(e) => { e.stopPropagation(); navigate('attendance'); }}
+            onClick={(e) => { e.stopPropagation(); navigate('/chamada'); }}
           >
             Entrar no Módulo I
           </button>
@@ -85,7 +87,7 @@ export default function HomePage({ navigate }) {
         {/* Card Módulo II */}
         <div
           className="module-landing-card animate-fade-in"
-          onClick={() => navigate('seami_control')}
+          onClick={() => navigate('/caderno-seami')}
           style={{
             backgroundColor: 'white',
             borderRadius: '20px',
@@ -122,7 +124,7 @@ export default function HomePage({ navigate }) {
           <button
             className="primary-btn"
             style={{ width: '100%', marginTop: '12px', justifyContent: 'center', backgroundColor: '#ec4899', border: 'none' }}
-            onClick={(e) => { e.stopPropagation(); navigate('seami_control'); }}
+            onClick={(e) => { e.stopPropagation(); navigate('/caderno-seami'); }}
           >
             Entrar no Módulo II
           </button>
@@ -131,7 +133,7 @@ export default function HomePage({ navigate }) {
 
       <button
         className="secondary-btn"
-        onClick={() => navigate('dashboard')}
+        onClick={() => navigate('/dashboard')}
         style={{
           gap: '8px',
           padding: '10px 24px',

@@ -1,20 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { Filter, Info, Download, Printer } from 'lucide-react';
-import { API_BASE_URL } from '../context/AppContext';
+import { useAppContext } from '../context/AppContext';
+import { getOccurrences } from '../supabaseClient';
 
 const CLASSROOMS = ['Alegria', 'Carinho', 'União', 'Amizade', 'Felicidade'];
 
 export default function ReportsPage() {
+  const { isDark } = useAppContext();
+
   const [occurrences, setOccurrences] = useState([]);
   const [filters, setFilters] = useState({ type: 'all', classroom: '', dateStart: '', dateEnd: '' });
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState(null);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/occurrences`)
-      .then(r => r.json())
-      .then(setOccurrences)
-      .catch(err => console.error('[ReportsPage]', err));
+    const load = async () => {
+      try {
+        const occData = await getOccurrences();
+        setOccurrences(occData || []);
+      } catch (err) {
+        console.error('[ReportsPage] Erro ao carregar ocorrências:', err);
+      }
+    };
+    load();
   }, []);
 
   const setPreset = (days) => {

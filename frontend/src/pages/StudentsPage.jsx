@@ -1,24 +1,30 @@
-import React, { useState } from 'react';
-import { Plus, Search, Trash2, Undo } from 'lucide-react';
-import { useAppContext, API_BASE_URL } from '../context/AppContext';
+import React, { useState, useEffect } from 'react';
+import { Plus, Search, Trash2, Undo, HelpCircle } from 'lucide-react';
+import { useAppContext } from '../context/AppContext';
+import { getStudents, saveStudent, toggleStudentActive, deleteStudent } from '../supabaseClient';
 
 const CLASSROOMS = ['Alegria', 'Carinho', 'União', 'Amizade', 'Felicidade'];
 
 export default function StudentsPage() {
-  const { students, setStudents, activeUser } = useAppContext();
+  const { activeUser, students, setStudents } = useAppContext();
 
   const [search, setSearch] = useState('');
   const [classroomFilter, setClassroomFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
-  const [form, setForm] = useState({ name: '', classroom: '', active: 'active' });
+  const [form, setForm] = useState({ name: '', classroom: '', active: 'active', shift: 'integral' });
 
   const openModal = (student = null) => {
     setEditingStudent(student);
     if (student) {
-      setForm({ name: student.name, classroom: student.classroom, active: student.active ? 'active' : 'inactive' });
+      setForm({
+        name: student.name,
+        classroom: student.classroom,
+        active: student.active ? 'active' : 'inactive',
+        shift: student.shift || 'integral'
+      });
     } else {
-      setForm({ name: '', classroom: '', active: 'active' });
+      setForm({ name: '', classroom: '', active: 'active', shift: 'integral' });
     }
     setIsModalOpen(true);
   };
@@ -30,39 +36,49 @@ export default function StudentsPage() {
       return;
     }
     try {
+      const payload = {
+        id: editingStudent ? editingStudent.id : undefined,
+        name: form.name.trim(),
+        classroom: form.classroom,
+        active: form.active === 'active',
+        shift: form.shift || 'integral'
+      };
+      
+      const saved = await saveStudent(payload);
       if (editingStudent) {
-        const res = await fetch(`${API_BASE_URL}/students/${editingStudent.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: form.name.trim(), classroom: form.classroom, active: form.active === 'active' })
-        });
-        const updated = await res.json();
-        setStudents(prev => prev.map(s => s.id === updated.id ? updated : s));
-        alert('Cadastro atualizado!');
+        setStudents(prev => prev.map(s => s.id === saved.id ? saved : s));
+        alert('Cadastro de aluno atualizado!');
       } else {
-        const res = await fetch(`${API_BASE_URL}/students`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: form.name.trim(), classroom: form.classroom })
-        });
-        const created = await res.json();
-        setStudents(prev => [...prev, created]);
-        alert('Novo aluno cadastrado!');
+        setStudents(prev => [...prev, saved]);
+        alert('Novo aluno cadastrado com sucesso!');
       }
       setIsModalOpen(false);
     } catch (err) {
       console.error(err);
-      alert('Erro ao salvar.');
+      alert('Erro ao salvar registro de aluno no Supabase.');
     }
   };
 
   const handleToggleActive = async (studentId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/students/${studentId}/toggle`, { method: 'PATCH' });
-      const updated = await res.json();
+      const updated = await toggleStudentActive(studentId);
       setStudents(prev => prev.map(s => s.id === updated.id ? updated : s));
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleDelete = async (studentId) => {
+    const student = students.find(s => s.id === studentId);
+    if (!student) return;
+    if (!window.confirm(`PERIGO: Tem certeza que deseja DELETAR permanentemente o aluno "${student.name}"? Isso removerá o cadastro e todas as presenças/ocorrências associadas. Esta ação não pode ser desfeita.`)) return;
+    try {
+      await deleteStudent(studentId);
+      setStudents(prev => prev.filter(s => s.id !== studentId));
+      alert('Aluno excluído com sucesso!');
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao excluir aluno do Supabase.');
     }
   };
 
@@ -73,6 +89,12 @@ export default function StudentsPage() {
       return matchSearch && matchClass;
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  const getShiftBadgeClass = (shift) => {
+    if (shift === 'matutino') return 'status-pill active';
+    if (shift === 'vespertino') return 'status-pill active';
+    return 'status-pill inactive';
+  };
 
   return (
     <section className="panel-section active">
@@ -92,10 +114,13 @@ export default function StudentsPage() {
             {CLASSROOMS.map(c => <option key={c} value={c}>Sala {c}</option>)}
           </select>
         </div>
-        <button className="primary-btn" onClick={() => openModal(null)}>
-          <Plus size={18} />
-          <span>Adicionar Aluno</span>
-        </button>
+        
+        {activeUser?.role === 'diretora' && (
+          <button className="primary-btn" onClick={() => openModal(null)}>
+            <Plus size={18} />
+            <span>Adicionar Aluno</span>
+          </button>
+        )}
       </div>
 
       <div className="table-card">
@@ -105,45 +130,69 @@ export default function StudentsPage() {
               <tr>
                 <th>Criança</th>
                 <th>Sala / Turma</th>
+                <th>Turno</th>
                 <th>Status</th>
                 <th className="actions-column">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {displayed.map(st => (
-                <tr key={st.id}>
-                  <td>
-                    <div className="student-row-name-wrapper">
-                      <span className="student-row-avatar">👦</span>
-                      <span style={{ fontWeight: 600 }}>{st.name}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <span className="occ-type-pill amamentacao" style={{ backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary)' }}>
-                      {st.classroom}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`status-pill ${st.active ? 'active' : 'inactive'}`}>
-                      {st.active ? 'Ativo' : 'Inativo'}
-                    </span>
-                  </td>
-                  <td className="actions-column">
-                    <div className="action-row-buttons">
-                      <button className="row-action-btn" onClick={() => openModal(st)} title="Editar">✏️</button>
-                      {activeUser.role === 'diretora' && (
-                        <button
-                          className="row-action-btn delete"
-                          onClick={() => handleToggleActive(st.id)}
-                          title={st.active ? 'Inativar' : 'Reativar'}
-                        >
-                          {st.active ? <Trash2 size={16} /> : <Undo size={16} />}
-                        </button>
-                      )}
-                    </div>
+              {displayed.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '40px', color: 'var(--slate-400)' }}>
+                    Nenhum aluno cadastrado correspondente aos filtros.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                displayed.map(st => (
+                  <tr key={st.id}>
+                    <td>
+                      <div className="student-row-name-wrapper">
+                        <span className="student-row-avatar">👦</span>
+                        <span style={{ fontWeight: 600 }}>{st.name}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="occ-type-pill amamentacao" style={{ backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary)', textTransform: 'capitalize' }}>
+                        {st.classroom}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={getShiftBadgeClass(st.shift)} style={{ textTransform: 'capitalize', fontSize: '12px' }}>
+                        {st.shift || 'Integral'}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`status-pill ${st.active ? 'active' : 'inactive'}`}>
+                        {st.active ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </td>
+                    <td className="actions-column">
+                      <div className="action-row-buttons">
+                        <button className="row-action-btn" onClick={() => openModal(st)} title="Editar">✏️</button>
+                        {activeUser?.role === 'diretora' && (
+                          <>
+                            <button
+                              className="row-action-btn"
+                              style={{ color: st.active ? 'var(--slate-400)' : 'var(--brand-primary)' }}
+                              onClick={() => handleToggleActive(st.id)}
+                              title={st.active ? 'Inativar' : 'Reativar'}
+                            >
+                              {st.active ? '⏸️' : '▶️'}
+                            </button>
+                            <button
+                              className="row-action-btn delete"
+                              onClick={() => handleDelete(st.id)}
+                              title="Excluir Permanentemente"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -174,6 +223,14 @@ export default function StudentsPage() {
                   <select required value={form.classroom} onChange={(e) => setForm(f => ({ ...f, classroom: e.target.value }))}>
                     <option value="">Selecione uma sala</option>
                     {CLASSROOMS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Turno / Período*</label>
+                  <select required value={form.shift} onChange={(e) => setForm(f => ({ ...f, shift: e.target.value }))}>
+                    <option value="integral">Integral</option>
+                    <option value="matutino">Matutino</option>
+                    <option value="vespertino">Vespertino</option>
                   </select>
                 </div>
                 {editingStudent && (

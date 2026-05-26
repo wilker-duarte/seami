@@ -382,6 +382,7 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       studentId: s.id,
       studentName: s.name,
       classroom: s.classroom,
+      turma_id: s.turma_id,     // ← passa o turma_id real do aluno
       status: attendanceMap[s.id] || 'P'
     }));
 
@@ -397,8 +398,8 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       fetchLogs(); 
       fetchAllAttendanceForReports();
     } catch (error) {
-      console.error(error);
-      showAlert('error', 'Erro ao salvar chamada no Supabase.');
+      console.error('[DailyAttendance] Erro ao salvar chamada:', error);
+      showAlert('error', `Erro ao salvar chamada: ${error.message || 'verifique o console.'}`);
     } finally {
       setSaving(false);
     }
