@@ -145,7 +145,7 @@ export default function App() {
   const [atrasoForm, setAtrasoForm] = useState({ date: '', time: '', reason: '', customReason: '', guardian: '', staff: 'Auxiliar Jéssica', obs: '', signature: '' });
   const [saidaForm, setSaidaForm] = useState({ date: '', time: '', reason: '', guardian: '', hasReturn: 'nao', returnTime: '', obs: '', signature: '' });
   const [atestadoForm, setAtestadoForm] = useState({ date: '', startDate: '', days: 1, endDate: '', cid: '', reason: '', filePreview: '', obs: '' });
-  const [faltaForm, setFaltaForm] = useState({ date: '', reason: '', justified: 'nao', notified: 'nao', obs: '' });
+  const [faltaForm, setFaltaForm] = useState({ date: '', startDate: '', endDate: '', reason: '', justified: 'nao', notified: 'nao', obs: '' });
   const [amamentacaoForm, setAmamentacaoForm] = useState({ date: '', timeIn: '', timeOut: '', guardian: '', obs: '' });
 
   // Estados de Anexos do Modal "Lançar Ocorrência"
@@ -375,7 +375,7 @@ export default function App() {
     setAtrasoForm({ date: todayStr, time: nowTimeStr, reason: '', customReason: '', guardian: '', staff: 'Auxiliar Jéssica', obs: '', signature: '' });
     setSaidaForm({ date: todayStr, time: nowTimeStr, reason: '', guardian: '', hasReturn: 'nao', returnTime: '', obs: '', signature: '' });
     setAtestadoForm({ date: todayStr, startDate: todayStr, days: 1, endDate: todayStr, cid: '', reason: '', filePreview: '', obs: '' });
-    setFaltaForm({ date: todayStr, reason: '', justified: 'nao', notified: 'nao', obs: '' });
+    setFaltaForm({ date: todayStr, startDate: todayStr, endDate: todayStr, reason: '', justified: 'nao', notified: 'nao', obs: '' });
     setAmamentacaoForm({ date: todayStr, timeIn: nowTimeStr, timeOut: '', guardian: '', obs: '' });
 
     setFormAttachment(null);
@@ -458,6 +458,9 @@ export default function App() {
       fullOccData = {
         ...baseOcc,
         date: faltaForm.date,
+        startDate: faltaForm.startDate || faltaForm.date,
+        endDate: faltaForm.endDate || faltaForm.date,
+        days: faltaForm.startDate && faltaForm.endDate ? Math.round((new Date(faltaForm.endDate) - new Date(faltaForm.startDate)) / (1000 * 60 * 60 * 24)) + 1 : null,
         motive: faltaForm.reason,
         justified: faltaForm.justified,
         notified: faltaForm.notified,
@@ -1132,12 +1135,15 @@ export default function App() {
                   <div className="dynamic-fields-section">
                     <div className="form-row">
                       <div className="form-group col-6">
-                        <label>Data da Ausência*</label>
+                        <label>Data Reg. Ausência*</label>
                         <input 
                           type="date" 
                           required
                           value={faltaForm.date}
-                          onChange={(e) => setFaltaForm({ ...faltaForm, date: e.target.value })}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFaltaForm(prev => ({ ...prev, date: val, startDate: val, endDate: val }));
+                          }}
                         />
                       </div>
                       <div className="form-group col-6">
@@ -1154,6 +1160,27 @@ export default function App() {
                           <option value="Condições climáticas / Chuva forte">Condições climáticas / Chuva forte</option>
                           <option value="Sem justificativa declarada">Sem justificativa declarada</option>
                         </select>
+                      </div>
+                    </div>
+
+                    <div className="form-row">
+                      <div className="form-group col-6">
+                        <label>Data de Início da Ausência*</label>
+                        <input 
+                          type="date" 
+                          required
+                          value={faltaForm.startDate}
+                          onChange={(e) => setFaltaForm(prev => ({ ...prev, startDate: e.target.value }))}
+                        />
+                      </div>
+                      <div className="form-group col-6">
+                        <label>Data de Fim da Ausência*</label>
+                        <input 
+                          type="date" 
+                          required
+                          value={faltaForm.endDate}
+                          onChange={(e) => setFaltaForm(prev => ({ ...prev, endDate: e.target.value }))}
+                        />
                       </div>
                     </div>
 

@@ -245,7 +245,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     setFormNotified('nao');
     setFormStartDate(new Date().toISOString().split('T')[0]);
     setFormDays('');
-    setFormEndDate('');
+    setFormEndDate(new Date().toISOString().split('T')[0]);
     setFormHasReturn('nao');
     setFormReturnTime('');
     setFormTimeIn('');
@@ -286,9 +286,9 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     setFormRecordedBy(occ.recordedBy || activeUser?.name || 'Diretora');
     setFormJustified(occ.justified || 'nao');
     setFormNotified(occ.notified || 'nao');
-    setFormStartDate(occ.startDate || new Date().toISOString().split('T')[0]);
+    setFormStartDate(occ.startDate || occ.date || new Date().toISOString().split('T')[0]);
     setFormDays(occ.days || '');
-    setFormEndDate(occ.endDate || '');
+    setFormEndDate(occ.endDate || occ.date || new Date().toISOString().split('T')[0]);
     setFormHasReturn(occ.hasReturn || 'nao');
     setFormReturnTime(occ.returnTime || '');
     setFormTimeIn(occ.timeIn || '');
@@ -352,9 +352,9 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
       staff: formStaff || null,
       obs: formObs || null,
       cid: formType === 'atestado' ? formCID : null,
-      startDate: formType === 'atestado' ? formStartDate : null,
-      days: formType === 'atestado' && formDays ? parseInt(formDays) : null,
-      endDate: formType === 'atestado' ? formEndDate : null,
+      startDate: (formType === 'atestado' || formType === 'falta') ? formStartDate : null,
+      days: formType === 'atestado' && formDays ? parseInt(formDays) : (formType === 'falta' && formStartDate && formEndDate ? Math.round((new Date(formEndDate) - new Date(formStartDate)) / (1000 * 60 * 60 * 24)) + 1 : null),
+      endDate: (formType === 'atestado' || formType === 'falta') ? formEndDate : null,
       justified: formType === 'falta' ? formJustified : null,
       notified: formType === 'falta' ? formNotified : null,
       hasReturn: formType === 'saida' ? formHasReturn : null,
@@ -615,11 +615,12 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
               <thead>
                 {activeCategory === 'falta' && (
                   <tr>
-                    <th style={{ width: '12%' }}>Data</th>
-                    <th style={{ width: '30%' }}>Nome do Aluno</th>
-                    <th style={{ width: '15%' }}>Sala/Turma</th>
-                    <th style={{ width: '13%' }}>Justificada?</th>
-                    <th style={{ width: '15%' }}>Avisado pelos pais?</th>
+                    <th style={{ width: '12%' }}>Data Reg.</th>
+                    <th style={{ width: '22%' }}>Nome do Aluno</th>
+                    <th style={{ width: '13%' }}>Sala/Turma</th>
+                    <th style={{ width: '20%' }}>Período Ausência</th>
+                    <th style={{ width: '10%' }}>Justificada?</th>
+                    <th style={{ width: '13%' }}>Avisado pelos pais?</th>
                     <th style={{ width: '5%', textAlign: 'center' }}>Doc</th>
                     <th style={{ width: '10%', textAlign: 'center' }}>Ações</th>
                   </tr>
@@ -710,6 +711,13 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                     {/* Dados específicos de Falta */}
                     {activeCategory === 'falta' && (
                       <>
+                        <td style={{ fontSize: '12px', color: 'var(--slate-600)' }}>
+                          {occ.startDate && occ.endDate ? (
+                            <span>{occ.days ? <strong>{occ.days} dias </strong> : ''}({formatDateBR(occ.startDate)} a {formatDateBR(occ.endDate)})</span>
+                          ) : (
+                            <span>{formatDateBR(occ.date)}</span>
+                          )}
+                        </td>
                         <td>
                           <span className={`badge ${occ.justified === 'sim' ? 'badge-success' : 'badge-danger'}`}>
                             {occ.justified === 'sim' ? 'Sim' : 'Não'}
@@ -1137,7 +1145,12 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                     <input
                       type="date"
                       value={formDate}
-                      onChange={(e) => setFormDate(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormDate(val);
+                        setFormStartDate(val);
+                        setFormEndDate(val);
+                      }}
                       className="form-control"
                       style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--slate-200)' }}
                     />
@@ -1172,22 +1185,35 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                 
                 {/* 1. Campos específicos de Faltas */}
                 {formType === 'falta' && (
-                  <div className="responsive-grid-2" style={{ padding: '14px', backgroundColor: '#fcf2f2', border: '1px solid #fca5a5', borderRadius: '8px' }}>
-                    <div className="filter-group">
-                      <label style={{ color: '#b91c1c', fontWeight: 600 }}>A falta é Justificada?</label>
-                      <select value={formJustified} onChange={(e) => setFormJustified(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fca5a5' }}>
-                        <option value="sim">Sim (Falta Justificada)</option>
-                        <option value="nao">Não</option>
-                      </select>
+                  <>
+                    <div className="responsive-grid-2" style={{ padding: '14px', backgroundColor: '#fcf2f2', border: '1px solid #fca5a5', borderRadius: '8px' }}>
+                      <div className="filter-group">
+                        <label style={{ color: '#b91c1c', fontWeight: 600 }}>A falta é Justificada?</label>
+                        <select value={formJustified} onChange={(e) => setFormJustified(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fca5a5' }}>
+                          <option value="sim">Sim (Falta Justificada)</option>
+                          <option value="nao">Não</option>
+                        </select>
+                      </div>
+                      <div className="filter-group">
+                        <label style={{ color: '#b91c1c', fontWeight: 600 }}>Pais avisaram previamente?</label>
+                        <select value={formNotified} onChange={(e) => setFormNotified(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fca5a5' }}>
+                          <option value="sim">Sim</option>
+                          <option value="nao">Não</option>
+                        </select>
+                      </div>
                     </div>
-                    <div className="filter-group">
-                      <label style={{ color: '#b91c1c', fontWeight: 600 }}>Pais avisaram previamente?</label>
-                      <select value={formNotified} onChange={(e) => setFormNotified(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fca5a5' }}>
-                        <option value="sim">Sim</option>
-                        <option value="nao">Não</option>
-                      </select>
+
+                    <div className="responsive-grid-2" style={{ padding: '14px', backgroundColor: '#fcf2f2', border: '1px solid #fca5a5', borderRadius: '8px' }}>
+                      <div className="filter-group">
+                        <label style={{ color: '#b91c1c', fontWeight: 600 }}>Data de Início da Ausência</label>
+                        <input type="date" value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fca5a5' }} />
+                      </div>
+                      <div className="filter-group">
+                        <label style={{ color: '#b91c1c', fontWeight: 600 }}>Data de Fim da Ausência</label>
+                        <input type="date" value={formEndDate} onChange={(e) => setFormEndDate(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fca5a5' }} />
+                      </div>
                     </div>
-                  </div>
+                  </>
                 )}
 
                 {/* 2. Campos específicos de Atestado */}

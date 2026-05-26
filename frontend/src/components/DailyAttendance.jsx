@@ -19,7 +19,7 @@ import {
   UserCheck,
   Percent
 } from 'lucide-react';
-import { getStudents, getAttendance, saveAttendanceBulk } from '../supabaseClient';
+import { getStudents, getAttendance, saveAttendanceBulk, getOccurrences } from '../supabaseClient';
 
 export default function DailyAttendance({ activeUser, initialTab, setActiveModule }) {
   const [classrooms] = useState(['Alegria', 'Carinho', 'União', 'Amizade', 'Felicidade']);
@@ -27,6 +27,7 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [students, setStudents] = useState([]);
   const [attendanceMap, setAttendanceMap] = useState({}); // { studentId: 'P' | 'F' | 'FJ' }
+  const [absenceReasons, setAbsenceReasons] = useState({}); // { studentId: { type: 'falta' | 'atestado', text: '...' } }
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -279,6 +280,33 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       filtered.forEach(s => {
         map[s.id] = 'P';
       });
+
+      // Busca ocorrências para pré-preenchimento
+      const occurrencesData = await getOccurrences();
+      const reasons = {};
+
+      filtered.forEach(s => {
+        const studentOccs = occurrencesData.filter(o => o.studentId === s.id && (o.type === 'falta' || o.type === 'atestado'));
+        for (const occ of studentOccs) {
+          const start = occ.startDate || occ.date;
+          const end = occ.endDate || occ.date;
+          if (start && end && attendanceDate >= start && attendanceDate <= end) {
+            if (occ.type === 'atestado' || occ.justified === 'sim') {
+              map[s.id] = 'FJ';
+            } else {
+              map[s.id] = 'F';
+            }
+            reasons[s.id] = {
+              type: occ.type,
+              text: occ.type === 'atestado'
+                ? `Atestado Médico (${formatDateBR(start)} a ${formatDateBR(end)})`
+                : `Falta Agendada (${formatDateBR(start)} a ${formatDateBR(end)})`
+            };
+            break;
+          }
+        }
+      });
+      setAbsenceReasons(reasons);
       
       // Verifica se já existe chamada salva no Supabase
       const attendanceData = await getAttendance({
@@ -338,19 +366,70 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
         date: attendanceDate
       });
       
+      const occurrencesData = await getOccurrences();
+      const reasons = {};
+      
       if (data && data.length > 0) {
         const map = { ...attendanceMap };
+        students.forEach(s => {
+          map[s.id] = 'P';
+
+          // Carrega ocorrências para as datas
+          const studentOccs = occurrencesData.filter(o => o.studentId === s.id && (o.type === 'falta' || o.type === 'atestado'));
+          for (const occ of studentOccs) {
+            const start = occ.startDate || occ.date;
+            const end = occ.endDate || occ.date;
+            if (start && end && attendanceDate >= start && attendanceDate <= end) {
+              if (occ.type === 'atestado' || occ.justified === 'sim') {
+                map[s.id] = 'FJ';
+              } else {
+                map[s.id] = 'F';
+              }
+              reasons[s.id] = {
+                type: occ.type,
+                text: occ.type === 'atestado'
+                  ? `Atestado Médico (${formatDateBR(start)} a ${formatDateBR(end)})`
+                  : `Falta Agendada (${formatDateBR(start)} a ${formatDateBR(end)})`
+              };
+              break;
+            }
+          }
+        });
+
         data.forEach(record => {
           map[record.studentId] = record.status;
         });
         setAttendanceMap(map);
+        setAbsenceReasons(reasons);
         showAlert('info', 'Dados de chamada existentes carregados para edição.');
       } else {
         const map = {};
         students.forEach(s => {
           map[s.id] = 'P';
+
+          // Carrega ocorrências para as datas
+          const studentOccs = occurrencesData.filter(o => o.studentId === s.id && (o.type === 'falta' || o.type === 'atestado'));
+          for (const occ of studentOccs) {
+            const start = occ.startDate || occ.date;
+            const end = occ.endDate || occ.date;
+            if (start && end && attendanceDate >= start && attendanceDate <= end) {
+              if (occ.type === 'atestado' || occ.justified === 'sim') {
+                map[s.id] = 'FJ';
+              } else {
+                map[s.id] = 'F';
+              }
+              reasons[s.id] = {
+                type: occ.type,
+                text: occ.type === 'atestado'
+                  ? `Atestado Médico (${formatDateBR(start)} a ${formatDateBR(end)})`
+                  : `Falta Agendada (${formatDateBR(start)} a ${formatDateBR(end)})`
+              };
+              break;
+            }
+          }
         });
         setAttendanceMap(map);
+        setAbsenceReasons(reasons);
       }
     } catch (error) {
       console.error("[DailyAttendance] Erro ao checar chamada existente:", error);
@@ -897,7 +976,27 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
                             }}>
                               {student.name.charAt(0)}
                             </div>
-                            <span style={{ fontWeight: 600, color: 'var(--slate-800)' }}>{student.name}</span>
+                            <div>
+                              <span style={{ fontWeight: 600, color: 'var(--slate-800)', display: 'block' }}>{student.name}</span>
+                              {absenceReasons[student.id] && (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '10px',
+                                  fontWeight: 600,
+                                  color: absenceReasons[student.id].type === 'atestado' ? '#ec4899' : '#ef4444',
+                                  backgroundColor: absenceReasons[student.id].type === 'atestado' ? '#fdf2f8' : '#fef2f2',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  marginTop: '3px',
+                                  border: `1px solid ${absenceReasons[student.id].type === 'atestado' ? '#fbcfe8' : '#fca5a5'}`
+                                }}>
+                                  <AlertCircle size={10} />
+                                  Ausência Programada: {absenceReasons[student.id].text}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td>

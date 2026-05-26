@@ -43,7 +43,7 @@ app.post('/api/students', async (req, res) => {
     return res.status(400).json({ error: 'Nome e sala são obrigatórios' });
   }
 
-  const id = `student_${Date.now()}`;
+  const id = String(Date.now());
   try {
     await run(
       'INSERT INTO students (id, name, classroom, active) VALUES (?, ?, ?, ?)',
@@ -69,7 +69,7 @@ app.post('/api/students/bulk', async (req, res) => {
       const { name, classroom } = s;
       if (!name || !classroom) continue;
       
-      const id = `student_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      const id = String(Date.now() + Math.floor(Math.random() * 1000));
       await run(
         'INSERT INTO students (id, name, classroom, active) VALUES (?, ?, ?, ?)',
         [id, name, classroom, 1]
@@ -160,7 +160,7 @@ app.post('/api/occurrences', async (req, res) => {
     return res.status(400).json({ error: 'Campos obrigatórios de ocorrência ausentes' });
   }
 
-  const id = `${occ.type}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  const id = String(Date.now() + Math.floor(Math.random() * 1000));
   try {
     await run(
       `INSERT INTO occurrences (
@@ -327,8 +327,8 @@ app.post('/api/attendance/bulk', async (req, res) => {
   try {
     for (const record of records) {
       const { studentId, studentName, status } = record;
-      const studentClassroom = record.classroom || classroom;
-      const id = `att_${studentId}_${date}`;
+      const cleanDate = date.replace(/-/g, '');
+      const id = `${studentId}${cleanDate}`;
       await run(
         `INSERT INTO attendance (id, date, studentId, studentName, classroom, status, recordedBy)
          VALUES (?, ?, ?, ?, ?, ?, ?)
