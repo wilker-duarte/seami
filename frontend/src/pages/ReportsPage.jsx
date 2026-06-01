@@ -52,7 +52,7 @@ export default function ReportsPage() {
     if (typeof window.XLSX === 'undefined') { alert('Biblioteca SheetJS não carregada.'); return; }
     const mapped = list.map((occ, idx) => {
       let details = '';
-      if (occ.type === 'atraso') details = `Chegada: ${occ.time} - ${occ.motive}`;
+      if (occ.type === 'atraso') details = `Chegada: ${occ.time} - ${occ.motive} (Justificado: ${occ.justified === 'sim' ? 'Sim' : 'Não'})`;
       else if (occ.type === 'saida') details = `Saída: ${occ.time} - ${occ.motive}`;
       else if (occ.type === 'atestado') details = `Afastado de ${occ.startDate} a ${occ.endDate} (${occ.days}d) CID ${occ.cid}`;
       else if (occ.type === 'falta') details = `${occ.motive} (Justificada: ${occ.justified === 'sim' ? 'Sim' : 'Não'})`;
@@ -111,7 +111,7 @@ export default function ReportsPage() {
       if (y > 275) { doc.addPage(); y = 20; drawHeader(); }
       const dateBR = occ.date.split('-').reverse().join('/');
       let details = '';
-      if (occ.type === 'atraso') details = `Chegada ${occ.time}`;
+      if (occ.type === 'atraso') details = `Chegada ${occ.time} (${occ.justified === 'sim' ? 'Justif.' : 'Não Justif.'})`;
       else if (occ.type === 'saida') details = `Saída ${occ.time}`;
       else if (occ.type === 'atestado') details = `(${occ.days}d) CID ${occ.cid}`;
       else if (occ.type === 'falta') details = occ.justified === 'sim' ? 'Justificada' : 'Sem Justif.';
@@ -224,7 +224,7 @@ export default function ReportsPage() {
                     <td><span className="occ-type-pill saida" style={{ backgroundColor: 'var(--color-saidas-bg)', color: 'var(--color-saidas)' }}>{occ.classroom}</span></td>
                     <td><span className={`occ-type-pill ${occ.type}`}>{occ.type.toUpperCase()}</span></td>
                     <td>
-                      {occ.type === 'atraso' && `Chegou às ${occ.time} - ${occ.motive}`}
+                      {occ.type === 'atraso' && `Chegou às ${occ.time} - ${occ.motive} (Justificado: ${occ.justified === 'sim' ? 'Sim' : 'Não'})`}
                       {occ.type === 'saida' && `Saída às ${occ.time} - ${occ.motive}`}
                       {occ.type === 'atestado' && `Afastado de ${occ.startDate?.split('-').reverse().join('/')} a ${occ.endDate?.split('-').reverse().join('/')} (${occ.days}d)`}
                       {occ.type === 'falta' && `${occ.motive} - ${occ.justified === 'sim' ? 'Justificada' : 'Sem Justif.'}`}

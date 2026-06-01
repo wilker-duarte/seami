@@ -355,8 +355,8 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
       startDate: (formType === 'atestado' || formType === 'falta') ? formStartDate : null,
       days: formType === 'atestado' && formDays ? parseInt(formDays) : (formType === 'falta' && formStartDate && formEndDate ? Math.round((new Date(formEndDate) - new Date(formStartDate)) / (1000 * 60 * 60 * 24)) + 1 : null),
       endDate: (formType === 'atestado' || formType === 'falta') ? formEndDate : null,
-      justified: formType === 'falta' ? formJustified : null,
-      notified: formType === 'falta' ? formNotified : null,
+      justified: (formType === 'falta' || formType === 'atraso') ? formJustified : null,
+      notified: (formType === 'falta' || formType === 'atraso') ? formNotified : null,
       hasReturn: formType === 'saida' ? formHasReturn : null,
       returnTime: formType === 'saida' ? formReturnTime : null,
       timeIn: formType === 'amamentacao' ? formTimeIn : null,
@@ -456,6 +456,14 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     if (!dateStr) return '';
     const [year, month, day] = dateStr.split('-');
     return `${day}/${month}/${year}`;
+  };
+
+  const formatReturnDateBR = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    const returnDateStr = d.toISOString().split('T')[0];
+    return formatDateBR(returnDateStr);
   };
 
   return (
@@ -636,17 +644,19 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                     <th style={{ width: '10%', textAlign: 'center' }}>Ações</th>
                   </tr>
                 )}
-                {activeCategory === 'atraso' && (
-                  <tr>
-                    <th style={{ width: '12%' }}>Data</th>
-                    <th style={{ width: '25%' }}>Nome do Aluno</th>
-                    <th style={{ width: '13%' }}>Sala/Turma</th>
-                    <th style={{ width: '10%' }}>Horário</th>
-                    <th style={{ width: '25%' }}>Motivo Declarado</th>
-                    <th style={{ width: '5%', textAlign: 'center' }}>Doc</th>
-                    <th style={{ width: '10%', textAlign: 'center' }}>Ações</th>
-                  </tr>
-                )}
+                 {activeCategory === 'atraso' && (
+                   <tr>
+                     <th style={{ width: '12%' }}>Data</th>
+                     <th style={{ width: '20%' }}>Nome do Aluno</th>
+                     <th style={{ width: '11%' }}>Sala/Turma</th>
+                     <th style={{ width: '8%' }}>Horário</th>
+                     <th style={{ width: '21%' }}>Motivo Declarado</th>
+                     <th style={{ width: '9%' }}>Justificado?</th>
+                     <th style={{ width: '10%' }}>Avisado pelos pais?</th>
+                     <th style={{ width: '4%', textAlign: 'center' }}>Doc</th>
+                     <th style={{ width: '10%', textAlign: 'center' }}>Ações</th>
+                   </tr>
+                 )}
                 {activeCategory === 'saida' && (
                   <tr>
                     <th style={{ width: '12%' }}>Data</th>
@@ -743,17 +753,27 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                       </>
                     )}
 
-                    {/* Dados específicos de Atraso */}
-                    {activeCategory === 'atraso' && (
-                      <>
-                        <td style={{ fontWeight: 600, color: 'var(--slate-600)' }}>
-                          {occ.time || '-'}
-                        </td>
-                        <td style={{ fontSize: '12px', color: 'var(--slate-600)' }}>
-                          {occ.motive || <span style={{ color: 'var(--slate-300)' }}>-</span>}
-                        </td>
-                      </>
-                    )}
+                     {/* Dados específicos de Atraso */}
+                     {activeCategory === 'atraso' && (
+                       <>
+                         <td style={{ fontWeight: 600, color: 'var(--slate-600)' }}>
+                           {occ.time || '-'}
+                         </td>
+                         <td style={{ fontSize: '12px', color: 'var(--slate-600)' }}>
+                           {occ.motive || <span style={{ color: 'var(--slate-300)' }}>-</span>}
+                         </td>
+                         <td>
+                           <span className={`badge ${occ.justified === 'sim' ? 'badge-success' : 'badge-danger'}`}>
+                             {occ.justified === 'sim' ? 'Sim' : 'Não'}
+                           </span>
+                         </td>
+                         <td>
+                           <span className={`badge ${occ.notified === 'sim' ? 'badge-success' : 'badge-danger'}`}>
+                             {occ.notified === 'sim' ? 'Sim' : 'Não'}
+                           </span>
+                         </td>
+                       </>
+                     )}
 
                     {/* Dados específicos de Saída */}
                     {activeCategory === 'saida' && (
@@ -1232,48 +1252,69 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                       <input type="text" placeholder="Ex: J11" value={formCID} onChange={(e) => setFormCID(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fbcfe8' }} />
                     </div>
                     <div style={{ gridColumn: 'span 3', color: '#db2777', fontSize: '11px', fontWeight: 600 }}>
-                      Retorno às atividades previsto para: {formEndDate ? formatDateBR(formEndDate) : '-'}
+                      Retorno às atividades previsto para: {formEndDate ? formatReturnDateBR(formEndDate) : '-'}
                     </div>
                   </div>
                 )}
 
                 {/* 3. Campos específicos de Atrasos ou Saídas */}
                 {(formType === 'atraso' || formType === 'saida') && (
-                  <div className="responsive-grid-2" style={{ padding: '14px', backgroundColor: '#fdfbeb', border: '1px solid #fde68a', borderRadius: '8px' }}>
-                    <div className="filter-group">
-                      <label style={{ color: '#b45309' }}>Responsável Familiar</label>
-                      <input 
-                        type="text" 
-                        placeholder="Nome de quem trouxe/retirou" 
-                        value={formGuardian} 
-                        onChange={(e) => setFormGuardian(e.target.value)} 
-                        className="form-control" 
-                        style={{ width: '100%', padding: '8px', border: '1px solid #fde68a' }} 
-                      />
-                    </div>
-                    
-                    {formType === 'saida' ? (
+                  <>
+                    <div className="responsive-grid-2" style={{ padding: '14px', backgroundColor: '#fdfbeb', border: '1px solid #fde68a', borderRadius: '8px' }}>
                       <div className="filter-group">
-                        <label style={{ color: '#b45309' }}>Retorna hoje?</label>
-                        <select value={formHasReturn} onChange={(e) => setFormHasReturn(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fde68a' }}>
-                          <option value="nao">Não retorna</option>
-                          <option value="sim">Sim (Retornará mais tarde)</option>
-                        </select>
-                      </div>
-                    ) : (
-                      <div className="filter-group">
-                        <label style={{ color: '#b45309' }}>Auxiliar/Professor Responsável</label>
+                        <label style={{ color: '#b45309' }}>Responsável Familiar</label>
                         <input 
                           type="text" 
-                          placeholder="Quem acompanhou" 
-                          value={formStaff} 
-                          onChange={(e) => setFormStaff(e.target.value)} 
+                          placeholder="Nome de quem trouxe/retirou" 
+                          value={formGuardian} 
+                          onChange={(e) => setFormGuardian(e.target.value)} 
                           className="form-control" 
                           style={{ width: '100%', padding: '8px', border: '1px solid #fde68a' }} 
                         />
                       </div>
+                      
+                      {formType === 'saida' ? (
+                        <div className="filter-group">
+                          <label style={{ color: '#b45309' }}>Retorna hoje?</label>
+                          <select value={formHasReturn} onChange={(e) => setFormHasReturn(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fde68a' }}>
+                            <option value="nao">Não retorna</option>
+                            <option value="sim">Sim (Retornará mais tarde)</option>
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="filter-group">
+                          <label style={{ color: '#b45309' }}>Auxiliar/Professor Responsável</label>
+                          <input 
+                            type="text" 
+                            placeholder="Quem acompanhou" 
+                            value={formStaff} 
+                            onChange={(e) => setFormStaff(e.target.value)} 
+                            className="form-control" 
+                            style={{ width: '100%', padding: '8px', border: '1px solid #fde68a' }} 
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {formType === 'atraso' && (
+                      <div className="responsive-grid-2" style={{ padding: '14px', backgroundColor: '#fdfbeb', border: '1px solid #fde68a', borderRadius: '8px' }}>
+                        <div className="filter-group">
+                          <label style={{ color: '#b45309', fontWeight: 600 }}>O atraso é Justificado?</label>
+                          <select value={formJustified} onChange={(e) => setFormJustified(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fde68a' }}>
+                            <option value="sim">Sim (Atraso Justificado)</option>
+                            <option value="nao">Não</option>
+                          </select>
+                        </div>
+                        <div className="filter-group">
+                          <label style={{ color: '#b45309', fontWeight: 600 }}>Pais avisaram previamente?</label>
+                          <select value={formNotified} onChange={(e) => setFormNotified(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fde68a' }}>
+                            <option value="sim">Sim</option>
+                            <option value="nao">Não</option>
+                          </select>
+                        </div>
+                      </div>
                     )}
-                  </div>
+                  </>
                 )}
 
                 {/* 4. Campos específicos de Amamentação */}

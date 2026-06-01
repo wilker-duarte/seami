@@ -142,7 +142,7 @@ export default function App() {
   const [activeReceipt, setActiveReceipt] = useState(null);
 
   // Estados dos Formulários de Ocorrências
-  const [atrasoForm, setAtrasoForm] = useState({ date: '', time: '', reason: '', customReason: '', guardian: '', staff: 'Auxiliar Jéssica', obs: '', signature: '' });
+  const [atrasoForm, setAtrasoForm] = useState({ date: '', time: '', reason: '', customReason: '', guardian: '', staff: 'Auxiliar Jéssica', obs: '', signature: '', justified: 'nao', notified: 'nao' });
   const [saidaForm, setSaidaForm] = useState({ date: '', time: '', reason: '', guardian: '', hasReturn: 'nao', returnTime: '', obs: '', signature: '' });
   const [atestadoForm, setAtestadoForm] = useState({ date: '', startDate: '', days: 1, endDate: '', cid: '', reason: '', filePreview: '', obs: '' });
   const [faltaForm, setFaltaForm] = useState({ date: '', startDate: '', endDate: '', reason: '', justified: 'nao', notified: 'nao', obs: '' });
@@ -372,7 +372,7 @@ export default function App() {
     const todayStr = new Date().toISOString().split("T")[0];
     const nowTimeStr = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-    setAtrasoForm({ date: todayStr, time: nowTimeStr, reason: '', customReason: '', guardian: '', staff: 'Auxiliar Jéssica', obs: '', signature: '' });
+    setAtrasoForm({ date: todayStr, time: nowTimeStr, reason: '', customReason: '', guardian: '', staff: 'Auxiliar Jéssica', obs: '', signature: '', justified: 'nao', notified: 'nao' });
     setSaidaForm({ date: todayStr, time: nowTimeStr, reason: '', guardian: '', hasReturn: 'nao', returnTime: '', obs: '', signature: '' });
     setAtestadoForm({ date: todayStr, startDate: todayStr, days: 1, endDate: todayStr, cid: '', reason: '', filePreview: '', obs: '' });
     setFaltaForm({ date: todayStr, startDate: todayStr, endDate: todayStr, reason: '', justified: 'nao', notified: 'nao', obs: '' });
@@ -412,6 +412,8 @@ export default function App() {
         guardian: atrasoForm.guardian.trim(),
         staff: atrasoForm.staff,
         obs: atrasoForm.obs.trim(),
+        justified: atrasoForm.justified,
+        notified: atrasoForm.notified,
         signature: null
       };
     } else if (occType === 'saida') {
@@ -924,6 +926,60 @@ export default function App() {
                         />
                       </div>
                     )}
+
+                    <div className="form-row">
+                      <div className="form-group col-6">
+                        <label>Atraso Justificado por Escrito?*</label>
+                        <div className="module-radio-buttons" style={{ marginTop: '4px' }}>
+                          <label className={`radio-btn ${atrasoForm.justified === 'sim' ? 'active' : ''}`}>
+                            <input 
+                              type="radio" 
+                              name="atraso-just" 
+                              value="sim" 
+                              checked={atrasoForm.justified === 'sim'}
+                              onChange={() => setAtrasoForm({ ...atrasoForm, justified: 'sim' })}
+                            />
+                            <span>Sim</span>
+                          </label>
+                          <label className={`radio-btn ${atrasoForm.justified === 'nao' ? 'active' : ''}`}>
+                            <input 
+                              type="radio" 
+                              name="atraso-just" 
+                              value="nao" 
+                              checked={atrasoForm.justified === 'nao'}
+                              onChange={() => setAtrasoForm({ ...atrasoForm, justified: 'nao' })}
+                            />
+                            <span>Não</span>
+                          </label>
+                        </div>
+                      </div>
+                      
+                      <div className="form-group col-6">
+                        <label>Houve Aviso Prévio dos Pais?*</label>
+                        <div className="module-radio-buttons" style={{ marginTop: '4px' }}>
+                          <label className={`radio-btn ${atrasoForm.notified === 'sim' ? 'active' : ''}`}>
+                            <input 
+                              type="radio" 
+                              name="atraso-not" 
+                              value="sim" 
+                              checked={atrasoForm.notified === 'sim'}
+                              onChange={() => setAtrasoForm({ ...atrasoForm, notified: 'sim' })}
+                            />
+                            <span>Sim</span>
+                          </label>
+                          <label className={`radio-btn ${atrasoForm.notified === 'nao' ? 'active' : ''}`}>
+                            <input 
+                              type="radio" 
+                              name="atraso-not" 
+                              value="nao" 
+                              checked={atrasoForm.notified === 'nao'}
+                              onChange={() => setAtrasoForm({ ...atrasoForm, notified: 'nao' })}
+                            />
+                            <span>Não</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
 
                     <div className="form-group">
                       <label>Observações Adicionais</label>
@@ -1478,6 +1534,8 @@ export default function App() {
                     <p style={{ margin: '6px 0' }}><strong>Horário de Chegada:</strong> {activeReceipt.time}</p>
                     <p style={{ margin: '6px 0' }}><strong>Responsável de Entrega:</strong> {activeReceipt.guardian}</p>
                     <p style={{ margin: '6px 0' }}><strong>Motivo Informado:</strong> {activeReceipt.motive}</p>
+                    <p style={{ margin: '6px 0' }}><strong>Atraso Justificado?</strong> {activeReceipt.justified === 'sim' ? 'Sim' : 'Não'}</p>
+                    <p style={{ margin: '6px 0' }}><strong>Aviso Prévio?</strong> {activeReceipt.notified === 'sim' ? 'Sim' : 'Não'}</p>
                     {activeReceipt.obs && <p style={{ margin: '6px 0' }}><strong>Observações:</strong> {activeReceipt.obs}</p>}
                   </>
                 )}
