@@ -26,7 +26,7 @@ import {
   Image,
   File
 } from 'lucide-react';
-import { getOccurrences, getStudents, saveOccurrence, deleteOccurrence } from '../supabaseClient';
+import { getOccurrences, getStudents, saveOccurrence, deleteOccurrence, getOccurrenceAttachment } from '../supabaseClient';
 
 export default function SeamiControl({ activeUser, activeModule, setActiveModule }) {
   // Categorias correspondentes às abas da planilha Controle Presença SEAMI
@@ -258,7 +258,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
   };
 
   // Abrir Formulário - Edição
-  const handleOpenEditModal = (occ) => {
+  const handleOpenEditModal = async (occ) => {
     setIsEditing(true);
     setEditingId(occ.id);
     
@@ -299,10 +299,19 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     if (fileInputRef.current) fileInputRef.current.value = '';
 
     if (occ.attachmentName) {
+      let attachmentData = occ.attachmentData;
+      if (!attachmentData && occ.id) {
+        try {
+          attachmentData = await getOccurrenceAttachment(occ.id);
+          occ.attachmentData = attachmentData; // Cache it
+        } catch (err) {
+          console.error("Erro ao carregar anexo para edição:", err);
+        }
+      }
       setFormAttachment({
         name: occ.attachmentName,
         type: occ.attachmentType,
-        data: occ.attachmentData
+        data: attachmentData
       });
     } else {
       setFormAttachment(null);
@@ -379,13 +388,23 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
   };
 
   // Abrir Visualizador
-  const handleViewAttachment = (occ) => {
-    setActiveAttachment({
-      name: occ.attachmentName,
-      type: occ.attachmentType,
-      data: occ.attachmentData
-    });
-    setIsAttachmentModalOpen(true);
+  const handleViewAttachment = async (occ) => {
+    try {
+      let attachmentData = occ.attachmentData;
+      if (!attachmentData && occ.id) {
+        attachmentData = await getOccurrenceAttachment(occ.id);
+        occ.attachmentData = attachmentData; // Cache it
+      }
+      setActiveAttachment({
+        name: occ.attachmentName,
+        type: occ.attachmentType,
+        data: attachmentData
+      });
+      setIsAttachmentModalOpen(true);
+    } catch (error) {
+      console.error("Erro ao carregar anexo:", error);
+      showAlert('error', 'Falha ao carregar o arquivo de anexo do banco.');
+    }
   };
 
   // Baixar Arquivo

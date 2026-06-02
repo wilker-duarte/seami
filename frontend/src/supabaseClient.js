@@ -345,7 +345,7 @@ export async function saveStudentBulk(studentsArray) {
 export async function getOccurrences() {
   const { data, error } = await supabase
     .from('occurrences')
-    .select('*')
+    .select('id, type, student_id, turma_id, studentname, classroom, date, time, motive, guardian, staff, obs, justified, notified, hasReturn, returnTime, timeIn, timeOut, startDate, days, endDate, cid, filePreview, signature, recordedBy, attachmentName, attachmentType')
     .order('date', { ascending: false });
   if (error) {
     console.error('[Supabase] Erro ao obter ocorrências:', error.message);
@@ -357,6 +357,19 @@ export async function getOccurrences() {
     studentName: o.studentname || o.studentName || '',  // normaliza nome da coluna
     classroom: classesNameMap[o.turma_id] || o.classroom || 'Alegria'
   }));
+}
+
+export async function getOccurrenceAttachment(id) {
+  const { data, error } = await supabase
+    .from('occurrences')
+    .select('attachmentData')
+    .eq('id', id)
+    .single();
+  if (error) {
+    console.error('[Supabase] Erro ao obter anexo da ocorrência:', error.message);
+    throw error;
+  }
+  return data?.attachmentData || null;
 }
 
 
