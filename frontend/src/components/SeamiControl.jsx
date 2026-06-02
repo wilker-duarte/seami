@@ -26,7 +26,7 @@ import {
   Image,
   File
 } from 'lucide-react';
-import { getOccurrences, getStudents, saveOccurrence, deleteOccurrence, getOccurrenceAttachment } from '../supabaseClient';
+import { getOccurrences, getStudents, saveOccurrence, deleteOccurrence, getOccurrenceAttachment, saveStudent } from '../supabaseClient';
 
 export default function SeamiControl({ activeUser, activeModule, setActiveModule }) {
   // Categorias correspondentes às abas da planilha Controle Presença SEAMI
@@ -262,16 +262,16 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     setIsEditing(true);
     setEditingId(occ.id);
     
-    if (occ.studentId && occ.studentId.startsWith('student_')) {
-      const stud = studentsList.find(s => s.id === occ.studentId);
-      if (stud) {
-        setSelectedStudent(stud);
-      } else {
-        setSelectedStudent({ id: occ.studentId, name: occ.studentName, classroom: occ.classroom });
-      }
+    const stud = occ.studentId ? studentsList.find(s => s.id === occ.studentId) : null;
+    if (stud) {
+      setSelectedStudent(stud);
+      setCustomStudentName('');
+    } else if (occ.studentId) {
+      setSelectedStudent({ id: occ.studentId, name: occ.studentName, classroom: occ.classroom });
+      setCustomStudentName('');
     } else {
       setSelectedStudent(null);
-      setCustomStudentName(occ.studentName);
+      setCustomStudentName(occ.studentName || '');
       setCustomClassroom(occ.classroom || 'Alegria');
     }
 
@@ -343,17 +343,51 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
       showAlert('error', 'O Nome do Aluno é de preenchimento obrigatório.');
       return;
     }
-    if (!formType) {
-      showAlert('error', 'O Tipo de Registro é obrigatório.');
+
+    let studentId = selectedStudent ? selectedStudent.id : null;
+
+    // Se for entrada manual, tenta associar ou criar no banco (pessoas) para evitar erro de Foreign Key
+    if (!studentId && customStudentName && customStudentName.trim()) {
+      const nameNorm = customStudentName.trim().toLowerCase();
+      const existingStudent = studentsList.find(s => s.name.trim().toLowerCase() === nameNorm);
+      if (existingStudent) {
+        studentId = existingStudent.id;
+      } else {
+        try {
+          const newStudent = await saveStudent({
+            name: customStudentName.trim(),
+            classroom: customClassroom,
+            active: true
+          });
+          studentId = newStudent.id;
+          // Atualiza lista local
+          setStudentsList(prev => [...prev, newStudent]);
+        } catch (err) {
+          console.error("Erro ao cadastrar novo aluno manual em pessoas:", err);
+          showAlert('error', 'Erro ao salvar o aluno no banco de dados.');
+          return;
+        }
+      }
+    }
+
+    // Se for edição e por algum motivo ainda não tiver studentId, tenta reaver do objeto original
+    if (!studentId && isEditing) {
+      const originalOcc = occurrences.find(o => o.id === editingId);
+      if (originalOcc) {
+        studentId = originalOcc.studentId;
+      }
+    }
+
+    if (!studentId) {
+      showAlert('error', 'Código de identificação do aluno ausente.');
       return;
     }
 
     // Validação de duplicidade para a mesma criança no mesmo dia (para qualquer tipo de ocorrência)
     if (formType) {
-      const studentId = selectedStudent ? selectedStudent.id : null;
       const isDuplicate = occurrences.some(o => 
         o.id !== editingId && 
-        (studentId ? o.studentId === studentId : o.studentName.trim().toLowerCase() === finalStudentName.trim().toLowerCase()) &&
+        o.studentId === studentId &&
         o.type === formType && 
         o.date === formDate
       );
@@ -374,7 +408,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     const payload = {
       id: isEditing ? editingId : undefined,
       type: formType,
-      studentId: selectedStudent ? selectedStudent.id : `custom_${Date.now()}`,
+      studentId: studentId,
       studentName: finalStudentName,
       classroom: selectedStudent ? selectedStudent.classroom : customClassroom,
       date: formDate,

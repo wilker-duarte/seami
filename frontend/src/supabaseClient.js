@@ -469,6 +469,7 @@ export async function getAttendance(filters = {}) {
   return data.map(a => ({
     ...a,
     studentId: a.student_id,
+    studentName: a.studentname || a.studentName || '',
     classroom: classesNameMap[a.turma_id] || a.classroom || 'Alegria'
   }));
 }
