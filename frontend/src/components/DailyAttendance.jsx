@@ -247,10 +247,10 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const [selectedReportStudent, setSelectedReportStudent] = useState(''); // studentId
   const [individualStats, setIndividualStats] = useState(null);
 
-  // Carrega alunos da sala selecionada
+  // Carrega alunos da sala selecionada ao mudar a sala ou a data
   useEffect(() => {
     fetchStudents();
-  }, [selectedClassroom]);
+  }, [selectedClassroom, attendanceDate]);
 
   // Carrega histórico geral no início e recarrega de forma reativa quando os filtros mudam
   useEffect(() => {
@@ -357,89 +357,7 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
     }
   };
 
-  // Buscar chamada salva quando a data muda
-  useEffect(() => {
-    if (students.length > 0) {
-      checkExistingAttendance();
-    }
-  }, [attendanceDate, selectedClassroom]);
 
-  const checkExistingAttendance = async () => {
-    try {
-      const data = await getAttendance({
-        classroom: selectedClassroom,
-        date: attendanceDate
-      });
-      
-      const occurrencesData = await getOccurrences();
-      const reasons = {};
-      
-      if (data && data.length > 0) {
-        const map = { ...attendanceMap };
-        students.forEach(s => {
-          map[s.id] = 'P';
-
-          // Carrega ocorrências para as datas
-          const studentOccs = occurrencesData.filter(o => o.studentId === s.id && (o.type === 'falta' || o.type === 'atestado'));
-          for (const occ of studentOccs) {
-            const start = occ.startDate || occ.date;
-            const end = occ.endDate || occ.date;
-            if (start && end && attendanceDate >= start && attendanceDate <= end) {
-              if (occ.type === 'atestado' || occ.justified === 'sim') {
-                map[s.id] = 'FJ';
-              } else {
-                map[s.id] = 'F';
-              }
-              reasons[s.id] = {
-                type: occ.type,
-                text: occ.type === 'atestado'
-                  ? `Atestado Médico (${formatDateBR(start)} a ${formatDateBR(end)})`
-                  : `Falta Agendada (${formatDateBR(start)} a ${formatDateBR(end)})`
-              };
-              break;
-            }
-          }
-        });
-
-        data.forEach(record => {
-          map[record.studentId] = record.status;
-        });
-        setAttendanceMap(map);
-        setAbsenceReasons(reasons);
-        showAlert('info', 'Dados de chamada existentes carregados para edição.');
-      } else {
-        const map = {};
-        students.forEach(s => {
-          map[s.id] = 'P';
-
-          // Carrega ocorrências para as datas
-          const studentOccs = occurrencesData.filter(o => o.studentId === s.id && (o.type === 'falta' || o.type === 'atestado'));
-          for (const occ of studentOccs) {
-            const start = occ.startDate || occ.date;
-            const end = occ.endDate || occ.date;
-            if (start && end && attendanceDate >= start && attendanceDate <= end) {
-              if (occ.type === 'atestado' || occ.justified === 'sim') {
-                map[s.id] = 'FJ';
-              } else {
-                map[s.id] = 'F';
-              }
-              reasons[s.id] = {
-                type: occ.type,
-                text: occ.type === 'atestado'
-                  ? `Atestado Médico (${formatDateBR(start)} a ${formatDateBR(end)})`
-                  : `Falta Agendada (${formatDateBR(start)} a ${formatDateBR(end)})`
-              };
-              break;
-            }
-          }
-        });
-        setAttendanceMap(map);
-        setAbsenceReasons(reasons);
-      }
-    } catch (error) {
-      console.error("[DailyAttendance] Erro ao checar chamada existente:", error);
-    }
-  };
 
   const showAlert = (type, text) => {
     setAlertMsg({ type, text });
