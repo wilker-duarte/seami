@@ -217,16 +217,37 @@ export async function getPessoas(type) {
 
 export async function getStudents() {
   const alumnos = await getPessoas('aluno');
-  return alumnos.map(a => ({
-    ...a,
-    studentId: a.id, // Compatibilidade
-    classroom: classesNameMap[a.turma_id] || 'Alegria', // Compatibilidade visual
-    shift: a.shift || 'integral'
-  }));
+  return alumnos.map(a => {
+    let entryDate = null;
+    let deactivationDate = null;
+    if (a.description) {
+      try {
+        const parsed = JSON.parse(a.description);
+        entryDate = parsed.entry_date || null;
+        deactivationDate = parsed.deactivation_date || null;
+      } catch (e) {
+        console.warn('Failed to parse description for student', a.id, e);
+      }
+    }
+    return {
+      ...a,
+      studentId: a.id, // Compatibilidade
+      classroom: classesNameMap[a.turma_id] || 'Alegria', // Compatibilidade visual
+      shift: a.shift || 'integral',
+      entry_date: entryDate,
+      deactivation_date: deactivationDate
+    };
+  });
 }
 
 export async function saveStudent(student) {
   const turmaId = student.turma_id || classesIdMap[student.classroom] || '1';
+  
+  const descriptionObj = {
+    entry_date: student.entry_date || new Date().toISOString().split('T')[0],
+    deactivation_date: student.deactivation_date || null
+  };
+
   const payload = {
     id: student.id || String(Date.now() + Math.floor(Math.random() * 1000)),
     name: sanitizeInput(student.name),
@@ -234,7 +255,8 @@ export async function saveStudent(student) {
     active: student.active ?? true,
     avatar: '👦',
     turma_id: turmaId,
-    shift: student.shift || 'integral'
+    shift: student.shift || 'integral',
+    description: JSON.stringify(descriptionObj)
   };
   
   const { data, error } = await supabase
@@ -248,17 +270,31 @@ export async function saveStudent(student) {
     throw error;
   }
 
+  let entryDate = null;
+  let deactivationDate = null;
+  if (data.description) {
+    try {
+      const parsed = JSON.parse(data.description);
+      entryDate = parsed.entry_date || null;
+      deactivationDate = parsed.deactivation_date || null;
+    } catch (e) {
+      console.warn('Failed to parse description for saved student', data.id, e);
+    }
+  }
+
   return {
     ...data,
     classroom: classesNameMap[data.turma_id] || 'Alegria',
-    shift: data.shift || 'integral'
+    shift: data.shift || 'integral',
+    entry_date: entryDate,
+    deactivation_date: deactivationDate
   };
 }
 
 export async function toggleStudentActive(studentId) {
   const { data: student, error: getErr } = await supabase
     .from('pessoas')
-    .select('active')
+    .select('active, description')
     .eq('id', studentId)
     .single();
   if (getErr) {
@@ -266,9 +302,28 @@ export async function toggleStudentActive(studentId) {
     throw getErr;
   }
 
+  const newActive = !student.active;
+  let descriptionObj = {};
+  if (student.description) {
+    try {
+      descriptionObj = JSON.parse(student.description);
+    } catch (e) {
+      console.warn('Failed to parse description for toggleStudentActive', studentId, e);
+    }
+  }
+
+  if (newActive) {
+    descriptionObj.deactivation_date = null;
+  } else {
+    descriptionObj.deactivation_date = new Date().toISOString().split('T')[0];
+  }
+
   const { data, error } = await supabase
     .from('pessoas')
-    .update({ active: !student.active })
+    .update({ 
+      active: newActive,
+      description: JSON.stringify(descriptionObj)
+    })
     .eq('id', studentId)
     .select()
     .single();
@@ -278,9 +333,23 @@ export async function toggleStudentActive(studentId) {
     throw error;
   }
 
+  let entryDate = null;
+  let deactivationDate = null;
+  if (data.description) {
+    try {
+      const parsed = JSON.parse(data.description);
+      entryDate = parsed.entry_date || null;
+      deactivationDate = parsed.deactivation_date || null;
+    } catch (e) {
+      console.warn('Failed to parse description for toggled student', data.id, e);
+    }
+  }
+
   return {
     ...data,
-    classroom: classesNameMap[data.turma_id] || 'Alegria'
+    classroom: classesNameMap[data.turma_id] || 'Alegria',
+    entry_date: entryDate,
+    deactivation_date: deactivationDate
   };
 }
 
@@ -315,6 +384,21 @@ export async function saveStudentBulk(studentsArray) {
     const existing = existingMap.get(normName);
     const turmaId = s.turma_id || classesIdMap[s.classroom] || '1';
     
+    let existingDescObj = {};
+    if (existing && existing.description) {
+      try {
+        existingDescObj = JSON.parse(existing.description);
+      } catch (e) {}
+    }
+
+    const entryDate = s.entry_date || existingDescObj.entry_date || new Date().toISOString().split('T')[0];
+    const deactivationDate = s.deactivation_date || existingDescObj.deactivation_date || (s.active === false ? new Date().toISOString().split('T')[0] : null);
+
+    const descriptionObj = {
+      entry_date: entryDate,
+      deactivation_date: deactivationDate
+    };
+
     return {
       id: existing ? existing.id : (s.id || String(Date.now() + Math.floor(Math.random() * 1000) + index)),
       name: sanitizeInput(s.name),
@@ -322,7 +406,8 @@ export async function saveStudentBulk(studentsArray) {
       active: s.active ?? true,
       avatar: '👦',
       turma_id: turmaId,
-      shift: s.shift || existing?.shift || 'integral'
+      shift: s.shift || existing?.shift || 'integral',
+      description: JSON.stringify(descriptionObj)
     };
   });
   
@@ -335,7 +420,25 @@ export async function saveStudentBulk(studentsArray) {
     console.error('[Supabase] Erro na importação de alunos:', error.message);
     throw error;
   }
-  return data;
+  
+  return data.map(d => {
+    let entryDate = null;
+    let deactivationDate = null;
+    if (d.description) {
+      try {
+        const parsed = JSON.parse(d.description);
+        entryDate = parsed.entry_date || null;
+        deactivationDate = parsed.deactivation_date || null;
+      } catch (e) {}
+    }
+    return {
+      ...d,
+      classroom: classesNameMap[d.turma_id] || 'Alegria',
+      shift: d.shift || 'integral',
+      entry_date: entryDate,
+      deactivation_date: deactivationDate
+    };
+  });
 }
 
 // ==========================================

@@ -5,6 +5,12 @@ import { getStudents, saveStudent, toggleStudentActive, deleteStudent } from '..
 
 const CLASSROOMS = ['Alegria', 'Carinho', 'União', 'Amizade', 'Felicidade'];
 
+const formatDateBR = (dateStr) => {
+  if (!dateStr) return '';
+  const [year, month, day] = dateStr.split('-');
+  return `${day}/${month}/${year}`;
+};
+
 export default function StudentsPage() {
   const { activeUser, students, setStudents } = useAppContext();
 
@@ -12,7 +18,7 @@ export default function StudentsPage() {
   const [classroomFilter, setClassroomFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
-  const [form, setForm] = useState({ name: '', classroom: '', active: 'active', shift: 'integral' });
+  const [form, setForm] = useState({ name: '', classroom: '', active: 'active', shift: 'integral', entry_date: new Date().toISOString().split('T')[0] });
 
   const openModal = (student = null) => {
     setEditingStudent(student);
@@ -21,10 +27,11 @@ export default function StudentsPage() {
         name: student.name,
         classroom: student.classroom,
         active: student.active ? 'active' : 'inactive',
-        shift: student.shift || 'integral'
+        shift: student.shift || 'integral',
+        entry_date: student.entry_date || new Date().toISOString().split('T')[0]
       });
     } else {
-      setForm({ name: '', classroom: '', active: 'active', shift: 'integral' });
+      setForm({ name: '', classroom: '', active: 'active', shift: 'integral', entry_date: new Date().toISOString().split('T')[0] });
     }
     setIsModalOpen(true);
   };
@@ -41,7 +48,9 @@ export default function StudentsPage() {
         name: form.name.trim(),
         classroom: form.classroom,
         active: form.active === 'active',
-        shift: form.shift || 'integral'
+        shift: form.shift || 'integral',
+        entry_date: form.entry_date,
+        deactivation_date: editingStudent ? (form.active === 'active' ? null : (editingStudent.deactivation_date || new Date().toISOString().split('T')[0])) : (form.active === 'active' ? null : new Date().toISOString().split('T')[0])
       };
       
       const saved = await saveStudent(payload);
@@ -148,7 +157,13 @@ export default function StudentsPage() {
                     <td>
                       <div className="student-row-name-wrapper">
                         <span className="student-row-avatar">👦</span>
-                        <span style={{ fontWeight: 600 }}>{st.name}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 600 }}>{st.name}</span>
+                          <span style={{ fontSize: '11px', color: 'var(--slate-400)' }}>
+                            Entrada: {st.entry_date ? formatDateBR(st.entry_date) : 'Não informada'}
+                            {!st.active && st.deactivation_date && ` • Desativação: ${formatDateBR(st.deactivation_date)}`}
+                          </span>
+                        </div>
                       </div>
                     </td>
                     <td>
@@ -232,6 +247,15 @@ export default function StudentsPage() {
                     <option value="matutino">Matutino</option>
                     <option value="vespertino">Vespertino</option>
                   </select>
+                </div>
+                <div className="form-group">
+                  <label>Data de Entrada*</label>
+                  <input
+                    type="date"
+                    required
+                    value={form.entry_date}
+                    onChange={(e) => setForm(f => ({ ...f, entry_date: e.target.value }))}
+                  />
                 </div>
                 {editingStudent && (
                   <div className="form-group">

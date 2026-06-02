@@ -273,7 +273,12 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
     setLoadingStudents(true);
     try {
       const data = await getStudents();
-      const filtered = data.filter(s => (selectedClassroom === 'all' || s.classroom === selectedClassroom) && s.active);
+      const filtered = data.filter(s => {
+        const matchClass = selectedClassroom === 'all' || s.classroom === selectedClassroom;
+        const entered = !s.entry_date || s.entry_date <= attendanceDate;
+        const activeOnDate = s.active || (s.deactivation_date && s.deactivation_date >= attendanceDate);
+        return matchClass && entered && activeOnDate;
+      });
       setStudents(filtered);
       
       const map = {};
@@ -333,7 +338,7 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const fetchStudentsDirectory = async () => {
     try {
       const data = await getStudents();
-      setStudentsDirectory(data.filter(s => s.active));
+      setStudentsDirectory(data);
     } catch (error) {
       console.error("[DailyAttendance] Erro ao obter diretório de alunos:", error);
     }
@@ -1732,7 +1737,9 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
                 >
                   <option value="">-- Selecione o Aluno --</option>
                   {studentsDirectory.map(student => (
-                    <option key={student.id} value={student.id}>{student.name} (Sala {student.classroom})</option>
+                    <option key={student.id} value={student.id}>
+                      {student.name} (Sala {student.classroom}){!student.active ? ' [Inativo]' : ''}
+                    </option>
                   ))}
                 </select>
                 <span style={{ fontSize: '11px', color: 'var(--slate-400)', display: 'block', marginTop: '6px' }}>
