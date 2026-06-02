@@ -390,6 +390,35 @@ export default function App() {
       return;
     }
 
+    // Resolvendo a data com base no tipo de ocorrência
+    let targetDate = '';
+    if (occType === 'atraso') targetDate = atrasoForm.date;
+    else if (occType === 'saida') targetDate = saidaForm.date;
+    else if (occType === 'atestado') targetDate = atestadoForm.date;
+    else if (occType === 'falta') targetDate = faltaForm.date;
+    else if (occType === 'amamentacao') targetDate = amamentacaoForm.date;
+
+    // Validação geral de duplicidade de ocorrência do mesmo tipo na mesma data
+    if (targetDate) {
+      const isDuplicate = occurrences.some(o => 
+        o.studentId === selectedStudentForOcc.id && 
+        o.type === occType && 
+        o.date === targetDate
+      );
+      if (isDuplicate) {
+        const typeLabels = {
+          'atraso': 'atraso',
+          'saida': 'saída antecipada',
+          'atestado': 'atestado médico',
+          'falta': 'falta',
+          'amamentacao': 'amamentação'
+        };
+        const label = typeLabels[occType] || occType;
+        alert(`Atenção: Já existe um lançamento de ${label} para esta criança nesta data (${targetDate.split('-').reverse().join('/')}).`);
+        return;
+      }
+    }
+
     const baseOcc = {
       type: occType,
       studentId: selectedStudentForOcc.id,

@@ -348,6 +348,29 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
       return;
     }
 
+    // Validação de duplicidade para a mesma criança no mesmo dia (para qualquer tipo de ocorrência)
+    if (formType) {
+      const studentId = selectedStudent ? selectedStudent.id : null;
+      const isDuplicate = occurrences.some(o => 
+        o.id !== editingId && 
+        (studentId ? o.studentId === studentId : o.studentName.trim().toLowerCase() === finalStudentName.trim().toLowerCase()) &&
+        o.type === formType && 
+        o.date === formDate
+      );
+      if (isDuplicate) {
+        const typeLabels = {
+          'falta': 'falta',
+          'atestado': 'atestado médico',
+          'atraso': 'atraso',
+          'saida': 'saída antecipada',
+          'amamentacao': 'amamentação'
+        };
+        const label = typeLabels[formType] || formType;
+        showAlert('error', `Atenção: Já existe um lançamento de ${label} para a criança "${finalStudentName}" nesta data (${formDate.split('-').reverse().join('/')}).`);
+        return;
+      }
+    }
+
     const payload = {
       id: isEditing ? editingId : undefined,
       type: formType,
