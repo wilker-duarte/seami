@@ -135,6 +135,7 @@ export default function App() {
   const [staffForm, setStaffForm] = useState({ name: '', role: 'diretora', avatar: '👩‍💼', desc: '' });
   
   const [isOccurrenceModalOpen, setIsOccurrenceModalOpen] = useState(false);
+  const [isSavingOccurrence, setIsSavingOccurrence] = useState(false);
   const [selectedStudentForOcc, setSelectedStudentForOcc] = useState(null);
   const [occType, setOccType] = useState('atraso');
   
@@ -385,6 +386,7 @@ export default function App() {
 
   const handleSaveOccurrence = async (e) => {
     e.preventDefault();
+    if (isSavingOccurrence) return;
     if (!selectedStudentForOcc) {
       alert('Por favor, selecione um aluno ativo para registrar a ocorrência.');
       return;
@@ -517,6 +519,7 @@ export default function App() {
     fullOccData.attachmentData = formAttachment ? formAttachment.data : null;
 
     try {
+      setIsSavingOccurrence(true);
       const createdOcc = await saveOccurrence(fullOccData);
       setOccurrences([createdOcc, ...occurrences]);
       setIsOccurrenceModalOpen(false);
@@ -524,6 +527,8 @@ export default function App() {
     } catch (err) {
       console.error(err);
       alert('Erro ao registrar ocorrência no Supabase.');
+    } finally {
+      setIsSavingOccurrence(false);
     }
   };
 
@@ -802,7 +807,7 @@ export default function App() {
           ================================================================== */}
       {isOccurrenceModalOpen && (
         <div className="modal-overlay active">
-          <div className="modal-card modal-large" style={{ maxWidth: '650px' }}>
+          <div className="modal-card modal-large" style={{ maxWidth: '850px' }}>
             <div className="modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '24px' }}>📝</span>
@@ -1526,7 +1531,9 @@ export default function App() {
               
               <div className="modal-footer">
                 <button type="button" className="secondary-btn" onClick={() => setIsOccurrenceModalOpen(false)}>Cancelar</button>
-                <button type="submit" className="primary-btn">Salvar Ocorrência</button>
+                <button type="submit" className="primary-btn" disabled={isSavingOccurrence}>
+                  {isSavingOccurrence ? 'Salvando...' : 'Salvar Ocorrência'}
+                </button>
               </div>
             </form>
           </div>

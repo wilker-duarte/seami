@@ -961,6 +961,15 @@ body.dark-mode .badge-auxiliar {
     filter: brightness(1.05);
 }
 
+.primary-btn:disabled {
+    background-color: var(--border-color);
+    color: var(--text-light);
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none !important;
+    filter: none !important;
+}
+
 .primary-btn i {
     width: 18px;
     height: 18px;
@@ -982,6 +991,15 @@ body.dark-mode .badge-auxiliar {
 
 .secondary-btn:hover {
     background-color: var(--border-color);
+}
+
+.secondary-btn:disabled {
+    background-color: var(--border-color);
+    color: var(--text-light);
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none !important;
+    filter: none !important;
 }
 
 .danger-btn {
@@ -1228,6 +1246,7 @@ body.dark-mode .data-table tbody tr:hover {
     z-index: 9999 !important;
     padding: 16px;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .modal-overlay.active {
@@ -1245,6 +1264,7 @@ body.dark-mode .data-table tbody tr:hover {
     display: flex;
     flex-direction: column;
     max-height: 90vh;
+    overflow-x: hidden;
 }
 
 .modal-card.modal-large {
@@ -1343,34 +1363,34 @@ body.dark-mode .data-table tbody tr:hover {
 }
 
 .form-body {
-    padding: 24px;
+    padding: 16px 20px;
     overflow-y: auto;
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
 }
 
 .form-row {
     display: flex;
-    gap: 16px;
+    gap: 12px;
 }
 
 .form-group {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
     flex: 1;
 }
 
-.col-4 { flex: 0 0 calc(33.333% - 11px); }
-.col-8 { flex: 0 0 calc(66.666% - 5px); }
-.col-6 { flex: 0 0 calc(50% - 8px); }
-.col-3 { flex: 0 0 calc(25% - 12px); }
-.col-5 { flex: 0 0 calc(41.666% - 10px); }
+.col-4 { flex: 0 0 calc(33.333% - 8px); }
+.col-8 { flex: 0 0 calc(66.666% - 4px); }
+.col-6 { flex: 0 0 calc(50% - 6px); }
+.col-3 { flex: 0 0 calc(25% - 9px); }
+.col-5 { flex: 0 0 calc(41.666% - 7px); }
 
 .form-group label {
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--text-secondary);
 }
@@ -1379,8 +1399,8 @@ body.dark-mode .data-table tbody tr:hover {
 .form-group select,
 .form-group textarea {
     width: 100%;
-    padding: 10px 14px;
-    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border-color);
     background-color: var(--bg-input);
     transition: all var(--transition-fast);
@@ -2226,6 +2246,21 @@ body.dark-mode .settings-action-row {
     .responsive-grid-4 {
         grid-template-columns: 1fr !important;
         gap: 12px !important;
+    }
+    
+    .form-row {
+        flex-direction: column !important;
+        gap: 12px !important;
+    }
+    
+    .form-row .col-3,
+    .form-row .col-4,
+    .form-row .col-5,
+    .form-row .col-6,
+    .form-row .col-8 {
+        flex: 1 1 100% !important;
+        width: 100% !important;
+        max-width: 100% !important;
     }
     
     .primary-btn {

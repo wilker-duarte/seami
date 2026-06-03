@@ -58,6 +58,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
   const [occurrences, setOccurrences] = useState([]);
   const [studentsList, setStudentsList] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [filterRoom, setFilterRoom] = useState('all');
   const [searchNameQuery, setSearchNameQuery] = useState('');
 
@@ -337,6 +338,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
   // Salvar formulário
   const handleSaveOccurrence = async (e) => {
     e.preventDefault();
+    if (isSaving) return;
 
     const finalStudentName = selectedStudent ? selectedStudent.name : customStudentName;
     if (!finalStudentName || !finalStudentName.trim()) {
@@ -434,6 +436,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     };
 
     try {
+      setIsSaving(true);
       await saveOccurrence(payload);
       showAlert('success', isEditing ? 'Registro de caderno atualizado!' : 'Registro gravado no caderno!');
       setIsFormModalOpen(false);
@@ -441,6 +444,8 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     } catch (error) {
       console.error(error);
       showAlert('error', 'Erro ao salvar informações no Supabase.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -962,69 +967,31 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
 
       {/* FORMULÁRIO DE REGISTRO / EDIÇÃO */}
       {isFormModalOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.45)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '16px',
-          animation: 'fadeIn 0.2s ease-out'
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '16px',
-            width: '100%',
-            maxWidth: '680px',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-            animation: 'scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
-          }}>
+        <div className="modal-overlay active">
+          <div className="modal-card modal-large" style={{ maxWidth: '850px' }}>
             {/* Header */}
-            <div style={{
-              padding: '18px 24px',
-              borderBottom: '1px solid var(--slate-100)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
+            <div className="modal-header">
               <div>
-                <h3 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: '18px', color: 'var(--slate-800)' }}>
+                <h3 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: '18px' }}>
                   {isEditing ? `Editar Registro de ${getTypeText(formType)}` : `Novo Registro de ${getTypeText(formType)}`}
                 </h3>
-                <span style={{ fontSize: '12px', color: 'var(--slate-400)' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                   Apenas <strong>Nome do Aluno</strong> e <strong>Tipo de Registro</strong> são obrigatórios no formulário.
                 </span>
               </div>
               <button
+                type="button"
+                className="modal-close-btn"
                 onClick={() => setIsFormModalOpen(false)}
-                style={{
-                  border: 'none',
-                  backgroundColor: '#f1f5f9',
-                  color: 'var(--slate-500)',
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
               >
-                <X size={16} />
+                <X size={20} />
               </button>
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSaveOccurrence} style={{ padding: '24px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
+            <form onSubmit={handleSaveOccurrence} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <div className="form-body">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
                 
                 {/* 1. SELETOR DE ESTUDANTE SUPER EXPANDIDO E ORGANIZADO (Requisito Crítico) */}
                 <div style={{ border: '1px solid #bfdbfe', borderRadius: '12px', padding: '16px', backgroundColor: '#eff6ff' }}>
@@ -1185,6 +1152,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
+                        flexWrap: 'wrap',
                         gap: '8px',
                         marginTop: '12px',
                         borderTop: '1px dashed #bfdbfe',
@@ -1327,7 +1295,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                       <label style={{ color: '#be185d' }}>CID Médico</label>
                       <input type="text" placeholder="Ex: J11" value={formCID} onChange={(e) => setFormCID(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #fbcfe8' }} />
                     </div>
-                    <div style={{ gridColumn: 'span 3', color: '#db2777', fontSize: '11px', fontWeight: 600 }}>
+                    <div style={{ gridColumn: '1 / -1', color: '#db2777', fontSize: '11px', fontWeight: 600 }}>
                       Retorno às atividades previsto para: {formEndDate ? formatReturnDateBR(formEndDate) : '-'}
                     </div>
                   </div>
@@ -1591,22 +1559,11 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                     tabIndex={-1}
                   />
                 </div>
-
               </div>
+            </div>
 
               {/* Ações formulário */}
-              <div className="modal-footer" style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                flexWrap: 'wrap',
-                gap: '12px',
-                marginTop: '28px',
-                borderTop: '1px solid var(--slate-100)',
-                paddingTop: '20px',
-                paddingRight: 0,
-                paddingLeft: 0,
-                paddingBottom: 0
-              }}>
+              <div className="modal-footer">
                 <button
                   type="button"
                   onClick={() => setIsFormModalOpen(false)}
@@ -1624,6 +1581,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                 </button>
                 <button
                   type="submit"
+                  disabled={isSaving}
                   style={{
                     padding: '10px 24px',
                     borderRadius: '8px',
@@ -1631,11 +1589,11 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                     color: 'white',
                     border: 'none',
                     fontWeight: 600,
-                    cursor: 'pointer',
+                    cursor: isSaving ? 'not-allowed' : 'pointer',
                     boxShadow: '0 4px 6px -1px rgba(99, 102, 241, 0.2)'
                   }}
                 >
-                  {isEditing ? 'Confirmar Edição' : 'Salvar Registro'}
+                  {isSaving ? 'Salvando...' : (isEditing ? 'Confirmar Edição' : 'Salvar Registro')}
                 </button>
               </div>
             </form>
