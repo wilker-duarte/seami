@@ -243,9 +243,41 @@ export async function getStudents() {
 export async function saveStudent(student) {
   const turmaId = student.turma_id || classesIdMap[student.classroom] || '1';
   
+  let entryDate = student.entry_date || new Date().toISOString().split('T')[0];
+  let deactivationDate = student.deactivation_date || null;
+
+  // Se for edição, vamos preservar as datas caso não tenham sido passadas no payload
+  if (student.id) {
+    try {
+      const { data: existing, error: fetchErr } = await supabase
+        .from('pessoas')
+        .select('description')
+        .eq('id', student.id)
+        .single();
+      if (!fetchErr && existing && existing.description) {
+        const parsed = JSON.parse(existing.description);
+        if (!student.entry_date && parsed.entry_date) {
+          entryDate = parsed.entry_date;
+        }
+        if (student.deactivation_date === undefined && parsed.deactivation_date) {
+          deactivationDate = parsed.deactivation_date;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse existing description in saveStudent', student.id, e);
+    }
+  }
+
+  // Se o aluno for ativado, a data de desativação deve ser limpa
+  if (student.active === true) {
+    deactivationDate = null;
+  } else if (student.active === false && !deactivationDate) {
+    deactivationDate = new Date().toISOString().split('T')[0];
+  }
+
   const descriptionObj = {
-    entry_date: student.entry_date || new Date().toISOString().split('T')[0],
-    deactivation_date: student.deactivation_date || null
+    entry_date: entryDate,
+    deactivation_date: deactivationDate
   };
 
   const payload = {
@@ -270,13 +302,13 @@ export async function saveStudent(student) {
     throw error;
   }
 
-  let entryDate = null;
-  let deactivationDate = null;
+  let entryDateResult = null;
+  let deactivationDateResult = null;
   if (data.description) {
     try {
       const parsed = JSON.parse(data.description);
-      entryDate = parsed.entry_date || null;
-      deactivationDate = parsed.deactivation_date || null;
+      entryDateResult = parsed.entry_date || null;
+      deactivationDateResult = parsed.deactivation_date || null;
     } catch (e) {
       console.warn('Failed to parse description for saved student', data.id, e);
     }
@@ -286,12 +318,12 @@ export async function saveStudent(student) {
     ...data,
     classroom: classesNameMap[data.turma_id] || 'Alegria',
     shift: data.shift || 'integral',
-    entry_date: entryDate,
-    deactivation_date: deactivationDate
+    entry_date: entryDateResult,
+    deactivation_date: deactivationDateResult
   };
 }
 
-export async function toggleStudentActive(studentId) {
+export async function toggleStudentActive(studentId, deactivationDate = null) {
   const { data: student, error: getErr } = await supabase
     .from('pessoas')
     .select('active, description')
@@ -315,7 +347,7 @@ export async function toggleStudentActive(studentId) {
   if (newActive) {
     descriptionObj.deactivation_date = null;
   } else {
-    descriptionObj.deactivation_date = new Date().toISOString().split('T')[0];
+    descriptionObj.deactivation_date = deactivationDate || new Date().toISOString().split('T')[0];
   }
 
   const { data, error } = await supabase
@@ -333,13 +365,13 @@ export async function toggleStudentActive(studentId) {
     throw error;
   }
 
-  let entryDate = null;
-  let deactivationDate = null;
+  let entryDateResult = null;
+  let deactivationDateResult = null;
   if (data.description) {
     try {
       const parsed = JSON.parse(data.description);
-      entryDate = parsed.entry_date || null;
-      deactivationDate = parsed.deactivation_date || null;
+      entryDateResult = parsed.entry_date || null;
+      deactivationDateResult = parsed.deactivation_date || null;
     } catch (e) {
       console.warn('Failed to parse description for toggled student', data.id, e);
     }
@@ -348,8 +380,8 @@ export async function toggleStudentActive(studentId) {
   return {
     ...data,
     classroom: classesNameMap[data.turma_id] || 'Alegria',
-    entry_date: entryDate,
-    deactivation_date: deactivationDate
+    entry_date: entryDateResult,
+    deactivation_date: deactivationDateResult
   };
 }
 

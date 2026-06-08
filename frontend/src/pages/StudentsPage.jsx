@@ -18,7 +18,9 @@ export default function StudentsPage() {
   const [classroomFilter, setClassroomFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
-  const [form, setForm] = useState({ name: '', classroom: '', active: 'active', shift: 'integral', entry_date: new Date().toISOString().split('T')[0] });
+  const [form, setForm] = useState({ name: '', classroom: '', active: 'active', shift: 'integral', entry_date: new Date().toISOString().split('T')[0], deactivation_date: new Date().toISOString().split('T')[0] });
+  const [deactivatingStudent, setDeactivatingStudent] = useState(null);
+  const [deactivationDateInput, setDeactivationDateInput] = useState(new Date().toISOString().split('T')[0]);
 
   const openModal = (student = null) => {
     setEditingStudent(student);
@@ -28,10 +30,11 @@ export default function StudentsPage() {
         classroom: student.classroom,
         active: student.active ? 'active' : 'inactive',
         shift: student.shift || 'integral',
-        entry_date: student.entry_date || new Date().toISOString().split('T')[0]
+        entry_date: student.entry_date || new Date().toISOString().split('T')[0],
+        deactivation_date: student.deactivation_date || new Date().toISOString().split('T')[0]
       });
     } else {
-      setForm({ name: '', classroom: '', active: 'active', shift: 'integral', entry_date: new Date().toISOString().split('T')[0] });
+      setForm({ name: '', classroom: '', active: 'active', shift: 'integral', entry_date: new Date().toISOString().split('T')[0], deactivation_date: new Date().toISOString().split('T')[0] });
     }
     setIsModalOpen(true);
   };
@@ -50,7 +53,7 @@ export default function StudentsPage() {
         active: form.active === 'active',
         shift: form.shift || 'integral',
         entry_date: form.entry_date,
-        deactivation_date: editingStudent ? (form.active === 'active' ? null : (editingStudent.deactivation_date || new Date().toISOString().split('T')[0])) : (form.active === 'active' ? null : new Date().toISOString().split('T')[0])
+        deactivation_date: form.active === 'active' ? null : form.deactivation_date
       };
       
       const saved = await saveStudent(payload);
@@ -68,12 +71,32 @@ export default function StudentsPage() {
     }
   };
 
-  const handleToggleActive = async (studentId) => {
+  const handleToggleActive = async (student) => {
+    if (student.active) {
+      setDeactivatingStudent(student);
+      setDeactivationDateInput(new Date().toISOString().split('T')[0]);
+    } else {
+      try {
+        const updated = await toggleStudentActive(student.id);
+        setStudents(prev => prev.map(s => s.id === updated.id ? updated : s));
+        alert('Aluno reativado com sucesso!');
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao reativar aluno.');
+      }
+    }
+  };
+
+  const confirmDeactivation = async () => {
+    if (!deactivatingStudent) return;
     try {
-      const updated = await toggleStudentActive(studentId);
+      const updated = await toggleStudentActive(deactivatingStudent.id, deactivationDateInput);
       setStudents(prev => prev.map(s => s.id === updated.id ? updated : s));
+      setDeactivatingStudent(null);
+      alert('Aluno desativado com sucesso!');
     } catch (err) {
       console.error(err);
+      alert('Erro ao desativar aluno.');
     }
   };
 
@@ -189,7 +212,7 @@ export default function StudentsPage() {
                             <button
                               className="row-action-btn"
                               style={{ color: st.active ? 'var(--slate-400)' : 'var(--brand-primary)' }}
-                              onClick={() => handleToggleActive(st.id)}
+                              onClick={() => handleToggleActive(st)}
                               title={st.active ? 'Inativar' : 'Reativar'}
                             >
                               {st.active ? '⏸️' : '▶️'}
@@ -266,12 +289,53 @@ export default function StudentsPage() {
                     </select>
                   </div>
                 )}
+                {form.active === 'inactive' && (
+                  <div className="form-group">
+                    <label>Data de Desligamento*</label>
+                    <input
+                      type="date"
+                      required
+                      value={form.deactivation_date}
+                      onChange={(e) => setForm(f => ({ ...f, deactivation_date: e.target.value }))}
+                    />
+                  </div>
+                )}
               </div>
               <div className="modal-footer">
                 <button type="button" className="secondary-btn" onClick={() => setIsModalOpen(false)}>Cancelar</button>
                 <button type="submit" className="primary-btn">Salvar Aluno</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmar Desativação */}
+      {deactivatingStudent && (
+        <div className="modal-overlay active">
+          <div className="modal-card" style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h2>Confirmar Desligamento</h2>
+              <button className="modal-close-btn" onClick={() => setDeactivatingStudent(null)}>✕</button>
+            </div>
+            <div className="form-body">
+              <p style={{ marginBottom: '16px', color: 'var(--slate-600)', fontSize: '14px', lineHeight: '1.5' }}>
+                Tem certeza que deseja desativar o aluno <strong>{deactivatingStudent.name}</strong>?
+              </p>
+              <div className="form-group">
+                <label>Data do Desligamento*</label>
+                <input
+                  type="date"
+                  required
+                  value={deactivationDateInput}
+                  onChange={(e) => setDeactivationDateInput(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="secondary-btn" onClick={() => setDeactivatingStudent(null)}>Cancelar</button>
+              <button type="button" className="primary-btn" onClick={confirmDeactivation}>Confirmar Desativação</button>
+            </div>
           </div>
         </div>
       )}

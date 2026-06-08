@@ -67,6 +67,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
   const [isAttachmentModalOpen, setIsAttachmentModalOpen] = useState(false);
   const [activeAttachment, setActiveAttachment] = useState(null); // { name, type, data }
   const [alertMsg, setAlertMsg] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // id da ocorrência aguardando confirmação de exclusão
 
   // Formulário (Criação / Edição)
   const [isEditing, setIsEditing] = useState(false);
@@ -321,17 +322,22 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     setIsFormModalOpen(true);
   };
 
-  // Excluir registro
-  const handleDeleteOccurrence = async (id) => {
-    if (window.confirm("Confirmar exclusão deste registro? Esta ação é permanente no Supabase.")) {
-      try {
-        await deleteOccurrence(id);
-        showAlert('success', 'Registro excluído com sucesso!');
-        fetchOccurrences();
-      } catch (error) {
-        console.error(error);
-        showAlert('error', 'Falha ao excluir registro no Supabase.');
-      }
+  // Excluir registro — abre modal de confirmação interno (window.confirm é bloqueado por alguns ambientes)
+  const handleDeleteOccurrence = (id) => {
+    setConfirmDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!confirmDeleteId) return;
+    try {
+      await deleteOccurrence(confirmDeleteId);
+      showAlert('success', 'Registro excluído com sucesso!');
+      fetchOccurrences();
+    } catch (error) {
+      console.error('[SeamiControl] Erro ao excluir ocorrência:', error);
+      showAlert('error', `Falha ao excluir registro. ${error?.message || ''}`);
+    } finally {
+      setConfirmDeleteId(null);
     }
   };
 
@@ -442,8 +448,9 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
       setIsFormModalOpen(false);
       fetchOccurrences();
     } catch (error) {
-      console.error(error);
-      showAlert('error', 'Erro ao salvar informações no Supabase.');
+      console.error('[SeamiControl] Erro ao salvar ocorrência:', error);
+      const detail = error?.message || error?.details || '';
+      showAlert('error', `Erro ao salvar informações no Supabase.${detail ? ' Detalhe: ' + detail : ''}`);
     } finally {
       setIsSaving(false);
     }
@@ -1733,6 +1740,68 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
           </div>
         </div>
       )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      {confirmDeleteId && (() => {
+        const occ = occurrences.find(o => o.id === confirmDeleteId);
+        return (
+          <div className="modal-overlay active" onClick={() => setConfirmDeleteId(null)}>
+            <div
+              className="modal-card"
+              style={{ maxWidth: '420px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--slate-800)' }}>
+                  Confirmar Exclusão
+                </h2>
+                <button className="modal-close-btn" onClick={() => setConfirmDeleteId(null)}>✕</button>
+              </div>
+              <div className="form-body" style={{ padding: '20px' }}>
+                <p style={{ fontSize: '14px', color: 'var(--slate-600)', lineHeight: '1.6', marginBottom: '0' }}>
+                  Tem certeza que deseja excluir permanentemente o registro de{' '}
+                  <strong style={{ color: 'var(--slate-800)' }}>
+                    {getTypeText(occ?.type)} de {occ?.studentName}
+                  </strong>
+                  {occ?.date ? ` (${occ.date.split('-').reverse().join('/')})` : ''}?
+                  <br />
+                  <span style={{ fontSize: '12px', color: '#b91c1c', marginTop: '8px', display: 'block' }}>
+                    ⚠️ Esta ação é irreversível e removerá o registro do banco de dados.
+                  </span>
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => setConfirmDeleteId(null)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDelete}
+                  style={{
+                    padding: '10px 20px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    fontWeight: 700,
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Trash2 size={15} /> Excluir Registro
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Estilos locais */}
       <style dangerouslySetInnerHTML={{__html: `

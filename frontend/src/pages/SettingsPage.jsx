@@ -38,6 +38,9 @@ export default function SettingsPage({
   const [editingTurma, setEditingTurma] = useState(null);
   const [editingPessoa, setEditingPessoa] = useState(null);
 
+  const [deactivatingStudent, setDeactivatingStudent] = useState(null);
+  const [deactivationDateInput, setDeactivationDateInput] = useState(new Date().toISOString().split('T')[0]);
+
   // Estados dos Formulários
   const [turmaForm, setTurmaForm] = useState({ name: '', age_group: '' });
   const [pessoaForm, setPessoaForm] = useState({
@@ -234,12 +237,31 @@ export default function SettingsPage({
 
   const handleTogglePessoaActive = async (pessoa) => {
     if (pessoa.type !== 'aluno') return; // Apenas alunos possuem toggle direto de ativo/inativo nesta tela
+    if (pessoa.active) {
+      setDeactivatingStudent(pessoa);
+      setDeactivationDateInput(new Date().toISOString().split('T')[0]);
+    } else {
+      try {
+        await toggleStudentActive(pessoa.id);
+        alert('Aluno reativado com sucesso!');
+        await refreshAll();
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao reativar aluno.');
+      }
+    }
+  };
+
+  const confirmDeactivation = async () => {
+    if (!deactivatingStudent) return;
     try {
-      await toggleStudentActive(pessoa.id);
+      await toggleStudentActive(deactivatingStudent.id, deactivationDateInput);
+      setDeactivatingStudent(null);
+      alert('Aluno desativado com sucesso!');
       await refreshAll();
     } catch (err) {
       console.error(err);
-      alert('Erro ao alternar status do aluno.');
+      alert('Erro ao desativar aluno.');
     }
   };
 
@@ -726,6 +748,36 @@ export default function SettingsPage({
                     <button type="submit" className="primary-btn">Salvar Cadastro</button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Confirmar Desativação de Aluno */}
+          {deactivatingStudent && (
+            <div className="modal-overlay active">
+              <div className="modal-card" style={{ maxWidth: '420px' }}>
+                <div className="modal-header">
+                  <h2>Confirmar Desligamento</h2>
+                  <button className="modal-close-btn" onClick={() => setDeactivatingStudent(null)}>✕</button>
+                </div>
+                <div className="form-body">
+                  <p style={{ marginBottom: '16px', color: 'var(--slate-600)', fontSize: '14px', lineHeight: '1.5' }}>
+                    Tem certeza que deseja desativar o aluno <strong>{deactivatingStudent.name}</strong>?
+                  </p>
+                  <div className="form-group">
+                    <label>Data do Desligamento*</label>
+                    <input
+                      type="date"
+                      required
+                      value={deactivationDateInput}
+                      onChange={(e) => setDeactivationDateInput(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="secondary-btn" onClick={() => setDeactivatingStudent(null)}>Cancelar</button>
+                  <button type="button" className="primary-btn" onClick={confirmDeactivation}>Confirmar Desativação</button>
+                </div>
               </div>
             </div>
           )}
