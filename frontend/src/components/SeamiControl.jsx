@@ -102,8 +102,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
   const [formReturnTime, setFormReturnTime] = useState('');
 
   // Amamentação
-  const [formTimeIn, setFormTimeIn] = useState('');
-  const [formTimeOut, setFormTimeOut] = useState('');
+  const [formQuantity, setFormQuantity] = useState('');
 
   // Anexos
   const [formAttachment, setFormAttachment] = useState(null); // { name, type, data }
@@ -250,8 +249,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     setFormEndDate(new Date().toISOString().split('T')[0]);
     setFormHasReturn('nao');
     setFormReturnTime('');
-    setFormTimeIn('');
-    setFormTimeOut('');
+    setFormQuantity('');
     // Garante reset completo do campo de arquivo
     setFormAttachment(null);
     setIsDragging(false);
@@ -293,8 +291,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
     setFormEndDate(occ.endDate || occ.date || new Date().toISOString().split('T')[0]);
     setFormHasReturn(occ.hasReturn || 'nao');
     setFormReturnTime(occ.returnTime || '');
-    setFormTimeIn(occ.timeIn || '');
-    setFormTimeOut(occ.timeOut || '');
+    setFormQuantity(occ.quantity != null ? String(occ.quantity) : '');
 
     // Reseta estado do drag ao abrir edição
     setIsDragging(false);
@@ -345,6 +342,40 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
   const handleSaveOccurrence = async (e) => {
     e.preventDefault();
     if (isSaving) return;
+
+    // Amamentação não precisa de aluno vinculado
+    if (formType === 'amamentacao') {
+      if (!formQuantity) {
+        showAlert('error', 'O campo Quantidade é obrigatório.');
+        return;
+      }
+      const payload = {
+        id: isEditing ? editingId : undefined,
+        type: 'amamentacao',
+        studentId: null,
+        studentName: 'Sala de Amamentação',
+        classroom: null,
+        date: formDate,
+        quantity: parseInt(formQuantity),
+        obs: formObs || null,
+        attachmentName: formAttachment ? formAttachment.name : null,
+        attachmentType: formAttachment ? formAttachment.type : null,
+        attachmentData: formAttachment ? formAttachment.data : null
+      };
+      try {
+        setIsSaving(true);
+        await saveOccurrence(payload);
+        showAlert('success', isEditing ? 'Registro de amamentação atualizado!' : 'Registro de amamentação gravado!');
+        setIsFormModalOpen(false);
+        fetchOccurrences();
+      } catch (error) {
+        console.error('[SeamiControl] Erro ao salvar amamentação:', error);
+        showAlert('error', `Erro ao salvar. ${error?.message || ''}`);
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
 
     const finalStudentName = selectedStudent ? selectedStudent.name : customStudentName;
     if (!finalStudentName || !finalStudentName.trim()) {
@@ -433,8 +464,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
       notified: (formType === 'falta' || formType === 'atraso') ? formNotified : null,
       hasReturn: formType === 'saida' ? formHasReturn : null,
       returnTime: formType === 'saida' ? formReturnTime : null,
-      timeIn: formType === 'amamentacao' ? formTimeIn : null,
-      timeOut: formType === 'amamentacao' ? formTimeOut : null,
+      quantity: formType === 'amamentacao' && formQuantity ? parseInt(formQuantity) : null,
       recordedBy: formRecordedBy,
       attachmentName: formAttachment ? formAttachment.name : null,
       attachmentType: formAttachment ? formAttachment.type : null,
@@ -506,8 +536,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
         setFormDays('');
         setFormEndDate('');
       } else if (formType === 'amamentacao') {
-        setFormTimeIn('14:30');
-        setFormTimeOut('15:00');
+        setFormQuantity('');
       }
     }
   }, [formType, isFormModalOpen]);
@@ -760,11 +789,10 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                 {activeCategory === 'amamentacao' && (
                   <tr>
                     <th style={{ width: '12%' }}>Data</th>
-                    <th style={{ width: '25%' }}>Nome do Aluno</th>
+                    <th style={{ width: '28%' }}>Nome do Aluno</th>
                     <th style={{ width: '13%' }}>Sala/Turma</th>
-                    <th style={{ width: '12%' }}>Entrada</th>
-                    <th style={{ width: '12%' }}>Saída</th>
-                    <th style={{ width: '11%' }}>Responsável</th>
+                    <th style={{ width: '10%' }}>Quantidade</th>
+                    <th style={{ width: '22%' }}>Observação</th>
                     <th style={{ width: '5%', textAlign: 'center' }}>Doc</th>
                     <th style={{ width: '10%', textAlign: 'center' }}>Ações</th>
                   </tr>
@@ -883,9 +911,8 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                     {/* Dados específicos de Amamentação */}
                     {activeCategory === 'amamentacao' && (
                       <>
-                        <td style={{ fontWeight: 600, color: '#10b981' }}>{occ.timeIn || '-'}</td>
-                        <td style={{ fontWeight: 600, color: '#059669' }}>{occ.timeOut || '-'}</td>
-                        <td style={{ fontSize: '12px', color: 'var(--slate-600)' }}>{occ.guardian || '-'}</td>
+                        <td style={{ fontWeight: 600, color: '#10b981' }}>{occ.quantity != null ? occ.quantity : '-'}</td>
+                        <td style={{ fontSize: '12px', color: 'var(--slate-600)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{occ.obs || '-'}</td>
                       </>
                     )}
 
@@ -983,7 +1010,10 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                   {isEditing ? `Editar Registro de ${getTypeText(formType)}` : `Novo Registro de ${getTypeText(formType)}`}
                 </h3>
                 <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Apenas <strong>Nome do Aluno</strong> e <strong>Tipo de Registro</strong> são obrigatórios no formulário.
+                  {formType === 'amamentacao'
+                    ? <>Preencha a <strong>Data</strong> e a <strong>Quantidade</strong> para registrar.</>
+                    : <>Apenas <strong>Nome do Aluno</strong> e <strong>Tipo de Registro</strong> são obrigatórios no formulário.</>
+                  }
                 </span>
               </div>
               <button
@@ -1000,196 +1030,114 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
               <div className="form-body">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
                 
-                {/* 1. SELETOR DE ESTUDANTE SUPER EXPANDIDO E ORGANIZADO (Requisito Crítico) */}
-                <div style={{ border: '1px solid #bfdbfe', borderRadius: '12px', padding: '16px', backgroundColor: '#eff6ff' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 700, color: '#1e3a8a', marginBottom: '8px' }}>
-                    <Users size={16} />
-                    Selecionar Aluno da Creche <span style={{ color: '#ef4444' }}>*</span>
-                  </span>
-                  
-                  {selectedStudent ? (
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '12px 16px',
-                      backgroundColor: 'white',
-                      borderRadius: '10px',
-                      border: '2px solid #3b82f6',
-                      boxShadow: '0 2px 4px rgba(59, 130, 246, 0.05)'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                          width: '36px',
-                          height: '36px',
-                          borderRadius: '50%',
-                          backgroundColor: '#3b82f6',
-                          color: 'white',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '14px',
-                          fontWeight: 700
-                        }}>
-                          {selectedStudent.name.charAt(0)}
-                        </div>
-                        <div>
-                          <strong style={{ color: '#1e293b', fontSize: '15px', display: 'block' }}>{selectedStudent.name}</strong>
-                          <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 600 }}>SALA / TURMA: {selectedStudent.classroom}</span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { setSelectedStudent(null); setSearchStudentQuery(''); }}
-                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#64748b' }}
-                      >
-                        <X size={18} />
-                      </button>
-                    </div>
-                  ) : customStudentName ? (
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '12px 16px',
-                      backgroundColor: 'white',
-                      borderRadius: '10px',
-                      border: '2px solid #cbd5e1'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <User size={18} style={{ color: '#64748b' }} />
-                        <div>
-                          <strong style={{ color: '#334155', fontSize: '14px' }}>{customStudentName}</strong>
-                          <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>Sala: {customClassroom} (Informado Manualmente)</span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setCustomStudentName('')}
-                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#64748b' }}
-                      >
-                        <X size={18} />
-                      </button>
-                    </div>
-                  ) : (
-                    <div>
-                      {/* Busca organizada de alunos */}
-                      <div style={{ position: 'relative', marginBottom: '12px' }}>
-                        <input
-                          type="text"
-                          placeholder="Digite para buscar alunos cadastrados nas turmas..."
-                          value={searchStudentQuery}
-                          onChange={(e) => setSearchStudentQuery(e.target.value)}
-                          className="form-control"
-                          style={{
-                            width: '100%',
-                            padding: '10px 10px 10px 36px',
-                            borderRadius: '8px',
-                            border: '1px solid #93c5fd',
-                            fontSize: '14px',
-                            fontFamily: 'Inter, sans-serif'
-                          }}
-                        />
-                        <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#3b82f6' }} />
-                      </div>
-                      
-                      {/* Lista Diretório de Seleção Expandido de Alunos (MUITO MAIS VISUAL) */}
-                      <div style={{
-                        border: '1px solid #bfdbfe',
-                        borderRadius: '8px',
-                        backgroundColor: 'white',
-                        maxHeight: '160px',
-                        overflowY: 'auto',
-                        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)'
-                      }}>
-                        {filteredStudentsForSelect.length === 0 ? (
-                          <div style={{ padding: '12px', fontSize: '13px', color: 'var(--slate-400)', textAlign: 'center' }}>
-                            Nenhum aluno correspondente. Caso queira, preencha manualmente no campo abaixo.
-                          </div>
-                        ) : (
-                          filteredStudentsForSelect.map(student => (
-                            <div
-                              key={student.id}
-                              onClick={() => setSelectedStudent(student)}
-                              style={{
-                                padding: '10px 14px',
-                                cursor: 'pointer',
-                                borderBottom: '1px solid #eff6ff',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                transition: 'background-color 0.15s ease'
-                              }}
-                              onMouseEnter={(e) => e.target.style.backgroundColor = '#eff6ff'}
-                              onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{
-                                  width: '26px',
-                                  height: '26px',
-                                  borderRadius: '50%',
-                                  backgroundColor: '#dbeafe',
-                                  color: '#1e40af',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '11px',
-                                  fontWeight: 700
-                                }}>
-                                  {student.name.charAt(0)}
-                                </div>
-                                <span style={{ fontWeight: 600, color: 'var(--slate-800)', fontSize: '13px' }}>{student.name}</span>
-                              </div>
-                              <span style={{
-                                fontSize: '10px',
-                                padding: '2px 8px',
-                                borderRadius: '10px',
-                                backgroundColor: '#dbeafe',
-                                color: '#1e40af',
-                                fontWeight: 700
-                              }}>
-                                Sala {student.classroom}
-                              </span>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                {/* 1. SELETOR DE ESTUDANTE - ocultado para amamentação */}
+                {formType !== 'amamentacao' && (
+                  <div style={{ border: '1px solid #bfdbfe', borderRadius: '12px', padding: '16px', backgroundColor: '#eff6ff' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 700, color: '#1e3a8a', marginBottom: '8px' }}>
+                      <Users size={16} />
+                      Selecionar Aluno da Creche <span style={{ color: '#ef4444' }}>*</span>
+                    </span>
 
-                      {/* Digitação Manual Flexível (Opcional - Caso não esteja no banco) */}
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '8px',
-                        marginTop: '12px',
-                        borderTop: '1px dashed #bfdbfe',
-                        paddingTop: '10px'
-                      }}>
-                        <span style={{ fontSize: '11px', color: '#1e3a8a', fontWeight: 500, minWidth: '120px' }}>Ou cadastrar manual:</span>
-                        <input
-                          type="text"
-                          placeholder="Nome completo do aluno"
-                          value={customStudentName}
-                          onChange={(e) => setCustomStudentName(e.target.value)}
-                          className="form-control"
-                          style={{ flex: 2, padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-                        />
-                        <select
-                          value={customClassroom}
-                          onChange={(e) => setCustomClassroom(e.target.value)}
-                          className="form-control"
-                          style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-                        >
-                          <option value="Alegria">Alegria</option>
-                          <option value="Carinho">Carinho</option>
-                          <option value="União">União</option>
-                          <option value="Amizade">Amizade</option>
-                          <option value="Felicidade">Felicidade</option>
-                        </select>
+                    {selectedStudent ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: 'white', borderRadius: '10px', border: '2px solid #3b82f6', boxShadow: '0 2px 4px rgba(59, 130, 246, 0.05)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#3b82f6', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700 }}>
+                            {selectedStudent.name.charAt(0)}
+                          </div>
+                          <div>
+                            <strong style={{ color: '#1e293b', fontSize: '15px', display: 'block' }}>{selectedStudent.name}</strong>
+                            <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 600 }}>SALA / TURMA: {selectedStudent.classroom}</span>
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => { setSelectedStudent(null); setSearchStudentQuery(''); }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#64748b' }}>
+                          <X size={18} />
+                        </button>
                       </div>
-                    </div>
-                  )}
-                </div>
+                    ) : customStudentName ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: 'white', borderRadius: '10px', border: '2px solid #cbd5e1' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <User size={18} style={{ color: '#64748b' }} />
+                          <div>
+                            <strong style={{ color: '#334155', fontSize: '14px' }}>{customStudentName}</strong>
+                            <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>Sala: {customClassroom} (Informado Manualmente)</span>
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => setCustomStudentName('')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#64748b' }}>
+                          <X size={18} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        {/* Busca organizada de alunos */}
+                        <div style={{ position: 'relative', marginBottom: '12px' }}>
+                          <input
+                            type="text"
+                            placeholder="Digite para buscar alunos cadastrados nas turmas..."
+                            value={searchStudentQuery}
+                            onChange={(e) => setSearchStudentQuery(e.target.value)}
+                            className="form-control"
+                            style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #93c5fd', fontSize: '14px', fontFamily: 'Inter, sans-serif' }}
+                          />
+                          <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#3b82f6' }} />
+                        </div>
+
+                        {/* Lista de alunos */}
+                        <div style={{ border: '1px solid #bfdbfe', borderRadius: '8px', backgroundColor: 'white', maxHeight: '160px', overflowY: 'auto', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
+                          {filteredStudentsForSelect.length === 0 ? (
+                            <div style={{ padding: '12px', fontSize: '13px', color: 'var(--slate-400)', textAlign: 'center' }}>
+                              Nenhum aluno correspondente. Caso queira, preencha manualmente no campo abaixo.
+                            </div>
+                          ) : (
+                            filteredStudentsForSelect.map(student => (
+                              <div
+                                key={student.id}
+                                onClick={() => setSelectedStudent(student)}
+                                style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'background-color 0.15s ease' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#eff6ff'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', backgroundColor: '#dbeafe', color: '#1e40af', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700 }}>
+                                    {student.name.charAt(0)}
+                                  </div>
+                                  <span style={{ fontWeight: 600, color: 'var(--slate-800)', fontSize: '13px' }}>{student.name}</span>
+                                </div>
+                                <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: 700 }}>
+                                  Sala {student.classroom}
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        {/* Digitação Manual */}
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '12px', borderTop: '1px dashed #bfdbfe', paddingTop: '10px' }}>
+                          <span style={{ fontSize: '11px', color: '#1e3a8a', fontWeight: 500, minWidth: '120px' }}>Ou cadastrar manual:</span>
+                          <input
+                            type="text"
+                            placeholder="Nome completo do aluno"
+                            value={customStudentName}
+                            onChange={(e) => setCustomStudentName(e.target.value)}
+                            className="form-control"
+                            style={{ flex: 2, padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                          />
+                          <select
+                            value={customClassroom}
+                            onChange={(e) => setCustomClassroom(e.target.value)}
+                            className="form-control"
+                            style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+                          >
+                            <option value="Alegria">Alegria</option>
+                            <option value="Carinho">Carinho</option>
+                            <option value="União">União</option>
+                            <option value="Amizade">Amizade</option>
+                            <option value="Felicidade">Felicidade</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="responsive-grid-2">
                   {/* TIPO DE REGISTRO */}
@@ -1228,7 +1176,8 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                   </div>
                 </div>
 
-                {/* HORÁRIO & QUEM REGISTROU */}
+                {/* HORÁRIO & QUEM REGISTROU - ocultado para amamentação */}
+                {formType !== 'amamentacao' && (
                 <div className="responsive-grid-2">
                   <div className="filter-group">
                     <label>Horário (Opcional)</label>
@@ -1251,6 +1200,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                     />
                   </div>
                 </div>
+                )}
 
                 {/* CAMPOS DINÂMICOS DE ACORDO COM A ABA/CATEGORIA ATIVA */}
                 
@@ -1370,19 +1320,25 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
 
                 {/* 4. Campos específicos de Amamentação */}
                 {formType === 'amamentacao' && (
-                  <div className="responsive-grid-2" style={{ padding: '14px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px' }}>
+                  <div style={{ padding: '14px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div className="filter-group">
-                      <label style={{ color: '#047857' }}>Hora Entrada</label>
-                      <input type="time" value={formTimeIn} onChange={(e) => setFormTimeIn(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #a7f3d0' }} />
-                    </div>
-                    <div className="filter-group">
-                      <label style={{ color: '#047857' }}>Hora Saída</label>
-                      <input type="time" value={formTimeOut} onChange={(e) => setFormTimeOut(e.target.value)} className="form-control" style={{ width: '100%', padding: '8px', border: '1px solid #a7f3d0' }} />
+                      <label style={{ color: '#047857', fontWeight: 600 }}>Quantidade <span style={{ color: '#ef4444' }}>*</span></label>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="Ex: 1"
+                        value={formQuantity}
+                        onChange={(e) => setFormQuantity(e.target.value)}
+                        className="form-control"
+                        required
+                        style={{ width: '100%', padding: '8px', border: '1px solid #a7f3d0' }}
+                      />
                     </div>
                   </div>
                 )}
 
-                {/* MOTIVO / JUSTIFICATIVA */}
+                {/* MOTIVO / JUSTIFICATIVA - ocultado para amamentação */}
+                {formType !== 'amamentacao' && (
                 <div className="filter-group">
                   <label>Justificativa / Motivo Declarado (Opcional)</label>
                   <input
@@ -1394,6 +1350,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                     style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--slate-200)' }}
                   />
                 </div>
+                )}
 
                 {/* OBSERVAÇÕES DETALHADAS */}
                 <div className="filter-group">

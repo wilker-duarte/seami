@@ -480,7 +480,7 @@ export async function saveStudentBulk(studentsArray) {
 export async function getOccurrences() {
   const { data, error } = await supabase
     .from('occurrences')
-    .select('id, type, student_id, turma_id, studentname, classroom, date, time, motive, guardian, staff, obs, justified, notified, hasReturn, returnTime, timeIn, timeOut, startDate, days, endDate, cid, filePreview, signature, recordedBy, attachmentName, attachmentType')
+    .select('id, type, student_id, turma_id, studentname, classroom, date, time, motive, guardian, staff, obs, justified, notified, hasReturn, returnTime, timeIn, timeOut, startDate, days, endDate, cid, filePreview, signature, recordedBy, attachmentName, attachmentType, quantity')
     .order('date', { ascending: false });
   if (error) {
     console.error('[Supabase] Erro ao obter ocorrências:', error.message);
@@ -510,15 +510,17 @@ export async function getOccurrenceAttachment(id) {
 
 export async function saveOccurrence(occ) {
   const id = occ.id || String(Date.now() + Math.floor(Math.random() * 1000));
-  const turmaId = occ.turma_id || classesIdMap[occ.classroom] || '1';
+  const turmaId = (occ.studentId || occ.student_id)
+    ? (occ.turma_id || classesIdMap[occ.classroom] || '1')
+    : null;
   
   const payload = {
     id,
     type: occ.type,
-    student_id: occ.studentId || occ.student_id,
+    student_id: occ.studentId || occ.student_id || null,
     turma_id: turmaId,
     studentname: sanitizeInput(occ.studentName || occ.studentname),  // coluna: studentname
-    classroom: classesNameMap[turmaId] || occ.classroom || 'Alegria',
+    classroom: turmaId ? (classesNameMap[turmaId] || occ.classroom || 'Alegria') : (occ.classroom || null),
     date: occ.date,
     time: occ.time || null,
     motive: sanitizeInput(occ.motive || null),
@@ -532,6 +534,7 @@ export async function saveOccurrence(occ) {
     returnTime: occ.returnTime || null,     // coluna: "returnTime"
     timeIn: occ.timeIn || null,             // coluna: "timeIn"
     timeOut: occ.timeOut || null,           // coluna: "timeOut"
+    quantity: occ.quantity != null ? parseInt(occ.quantity) : null, // coluna: "quantity"
     startDate: occ.startDate || null,       // coluna: "startDate"
     days: occ.days ? parseInt(occ.days) : null,
     endDate: occ.endDate || null,           // coluna: "endDate"
@@ -825,10 +828,8 @@ export async function seedDemoData() {
         studentName: student.name,
         classroom: student.classroom,
         date: dateStr,
-        timeIn,
-        timeOut,
-        guardian: parentNames[Math.floor(Math.random() * parentNames.length)],
-        obs: "Mamou super bem. Ficou dormindo após."
+        quantity: Math.floor(Math.random() * 3) + 1,
+        obs: "Registrado sem intercorrências."
       });
     } else {
       // ATESTADO

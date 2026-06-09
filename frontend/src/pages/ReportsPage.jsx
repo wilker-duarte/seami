@@ -56,7 +56,7 @@ export default function ReportsPage() {
       else if (occ.type === 'saida') details = `Saída: ${occ.time} - ${occ.motive}`;
       else if (occ.type === 'atestado') details = `Afastado de ${occ.startDate} a ${occ.endDate} (${occ.days}d) CID ${occ.cid}`;
       else if (occ.type === 'falta') details = `${occ.motive} (Justificada: ${occ.justified === 'sim' ? 'Sim' : 'Não'})`;
-      else if (occ.type === 'amamentacao') details = `${occ.timeIn} às ${occ.timeOut}`;
+      else if (occ.type === 'amamentacao') details = `Quantidade: ${occ.quantity ?? '-'}`;
       return {
         'Nº': idx + 1,
         'Data': occ.date.split('-').reverse().join('/'),
@@ -115,7 +115,7 @@ export default function ReportsPage() {
       else if (occ.type === 'saida') details = `Saída ${occ.time}`;
       else if (occ.type === 'atestado') details = `(${occ.days}d) CID ${occ.cid}`;
       else if (occ.type === 'falta') details = occ.justified === 'sim' ? 'Justificada' : 'Sem Justif.';
-      else if (occ.type === 'amamentacao') details = `${occ.timeIn}`;
+      else if (occ.type === 'amamentacao') details = `Qtd: ${occ.quantity ?? '-'}`;
       const nameTrunc = occ.studentName.length > 22 ? occ.studentName.substring(0, 20) + '...' : occ.studentName;
       doc.text(dateBR, 12, y);
       doc.text(nameTrunc, 35, y);
@@ -228,7 +228,7 @@ export default function ReportsPage() {
                       {occ.type === 'saida' && `Saída às ${occ.time} - ${occ.motive}`}
                       {occ.type === 'atestado' && `Afastado de ${occ.startDate?.split('-').reverse().join('/')} a ${occ.endDate?.split('-').reverse().join('/')} (${occ.days}d)`}
                       {occ.type === 'falta' && `${occ.motive} - ${occ.justified === 'sim' ? 'Justificada' : 'Sem Justif.'}`}
-                      {occ.type === 'amamentacao' && `Permanência: ${occ.timeIn} - ${occ.timeOut}`}
+                      {occ.type === 'amamentacao' && `Quantidade: ${occ.quantity ?? '-'}${occ.obs ? ' | ' + occ.obs : ''}`}
                     </td>
                     <td>{occ.guardian || '-'}</td>
                     <td>

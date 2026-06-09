@@ -11,6 +11,7 @@ import DashboardCharts from '../components/DashboardCharts';
 
 export default function DashboardPage({ setActiveModule }) {
   const { students, isDark } = useAppContext();
+  const activeStudents = students.filter(s => s.active !== false);
   const navigate = useNavigate();
 
   const [occurrences, setOccurrences] = useState([]);
@@ -166,7 +167,7 @@ export default function DashboardPage({ setActiveModule }) {
             <label>Criança</label>
             <select value={filters.studentId} onChange={(e) => setFilters(f => ({ ...f, studentId: e.target.value }))}>
               <option value="">Todas as crianças</option>
-              {students
+              {activeStudents
                 .filter(s => !filters.classroom || s.classroom === filters.classroom)
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map(s => <option key={s.id} value={s.id}>{s.name}</option>)
@@ -190,7 +191,7 @@ export default function DashboardPage({ setActiveModule }) {
               <span className="metric-title" style={{ fontWeight: '700' }}>Total Geral de Alunos</span>
               <div className="metric-icon-box" style={{ backgroundColor: 'var(--brand-light)', color: 'var(--brand-primary)' }}>🏫</div>
             </div>
-            <div className="metric-value" style={{ fontSize: '32px', fontWeight: '800' }}>{students.length}</div>
+            <div className="metric-value" style={{ fontSize: '32px', fontWeight: '800' }}>{activeStudents.length}</div>
             <div className="metric-footer text-secondary"><span>Clique para ver a listagem completa</span></div>
           </div>
 
@@ -200,7 +201,7 @@ export default function DashboardPage({ setActiveModule }) {
               <span className="metric-title">Sala Alegria</span>
               <div className="metric-icon-box" style={{ backgroundColor: '#eff6ff', color: '#3b82f6', fontSize: '16px' }}>👶</div>
             </div>
-            <div className="metric-value" style={{ color: '#1e3a8a' }}>{students.filter(s => s.classroom === 'Alegria').length}</div>
+            <div className="metric-value" style={{ color: '#1e3a8a' }}>{activeStudents.filter(s => s.classroom === 'Alegria').length}</div>
             <div className="metric-footer" style={{ color: '#2563eb' }}><span>Berçário I &middot; Clique para ver</span></div>
           </div>
 
@@ -210,7 +211,7 @@ export default function DashboardPage({ setActiveModule }) {
               <span className="metric-title">Sala Carinho</span>
               <div className="metric-icon-box" style={{ backgroundColor: '#ecfdf5', color: '#10b981', fontSize: '16px' }}>🧸</div>
             </div>
-            <div className="metric-value" style={{ color: '#065f46' }}>{students.filter(s => s.classroom === 'Carinho').length}</div>
+            <div className="metric-value" style={{ color: '#065f46' }}>{activeStudents.filter(s => s.classroom === 'Carinho').length}</div>
             <div className="metric-footer" style={{ color: '#059669' }}><span>Berçário II &middot; Clique para ver</span></div>
           </div>
 
@@ -220,7 +221,7 @@ export default function DashboardPage({ setActiveModule }) {
               <span className="metric-title">Sala União</span>
               <div className="metric-icon-box" style={{ backgroundColor: '#fffbeb', color: '#f59e0b', fontSize: '16px' }}>🤝</div>
             </div>
-            <div className="metric-value" style={{ color: '#78350f' }}>{students.filter(s => s.classroom === 'União').length}</div>
+            <div className="metric-value" style={{ color: '#78350f' }}>{activeStudents.filter(s => s.classroom === 'União').length}</div>
             <div className="metric-footer" style={{ color: '#d97706' }}><span>Maternal I &middot; Clique para ver</span></div>
           </div>
 
@@ -230,7 +231,7 @@ export default function DashboardPage({ setActiveModule }) {
               <span className="metric-title">Sala Amizade</span>
               <div className="metric-icon-box" style={{ backgroundColor: '#f5f3ff', color: '#8b5cf6', fontSize: '16px' }}>🎨</div>
             </div>
-            <div className="metric-value" style={{ color: '#4c1d95' }}>{students.filter(s => s.classroom === 'Amizade').length}</div>
+            <div className="metric-value" style={{ color: '#4c1d95' }}>{activeStudents.filter(s => s.classroom === 'Amizade').length}</div>
             <div className="metric-footer" style={{ color: '#7c3aed' }}><span>Maternal II &middot; Clique para ver</span></div>
           </div>
 
@@ -240,7 +241,7 @@ export default function DashboardPage({ setActiveModule }) {
               <span className="metric-title">Sala Felicidade</span>
               <div className="metric-icon-box" style={{ backgroundColor: '#fdf2f8', color: '#ec4899', fontSize: '16px' }}>✨</div>
             </div>
-            <div className="metric-value" style={{ color: '#831843' }}>{students.filter(s => s.classroom === 'Felicidade').length}</div>
+            <div className="metric-value" style={{ color: '#831843' }}>{activeStudents.filter(s => s.classroom === 'Felicidade').length}</div>
             <div className="metric-footer" style={{ color: '#db2777' }}><span>Pré-Escola &middot; Clique para ver</span></div>
           </div>
         </div>
@@ -335,8 +336,8 @@ export default function DashboardPage({ setActiveModule }) {
       {/* Modal de Alunos da Turma */}
       {selectedClassForModal && (() => {
         const modalStudents = selectedClassForModal === 'all'
-          ? students
-          : students.filter(s => s.classroom === selectedClassForModal);
+          ? activeStudents
+          : activeStudents.filter(s => s.classroom === selectedClassForModal);
           
         return (
           <div className="modal-overlay active" onClick={() => setSelectedClassForModal(null)}>
@@ -351,7 +352,7 @@ export default function DashboardPage({ setActiveModule }) {
                       {selectedClassForModal === 'all' ? 'Todos os Alunos' : `Sala ${selectedClassForModal}`}
                     </h2>
                     <span style={{ fontSize: '12px', color: 'var(--slate-500)' }}>
-                      Total: <strong>{modalStudents.length}</strong> {modalStudents.length === 1 ? 'aluno matriculado' : 'alunos matriculados'}
+                      Total: <strong>{modalStudents.length}</strong> {modalStudents.length === 1 ? 'aluno ativo' : 'alunos ativos'}
                     </span>
                   </div>
                 </div>

@@ -147,7 +147,7 @@ export default function App() {
   const [saidaForm, setSaidaForm] = useState({ date: '', time: '', reason: '', guardian: '', hasReturn: 'nao', returnTime: '', obs: '', signature: '' });
   const [atestadoForm, setAtestadoForm] = useState({ date: '', startDate: '', days: 1, endDate: '', cid: '', reason: '', filePreview: '', obs: '' });
   const [faltaForm, setFaltaForm] = useState({ date: '', startDate: '', endDate: '', reason: '', justified: 'nao', notified: 'nao', obs: '' });
-  const [amamentacaoForm, setAmamentacaoForm] = useState({ date: '', timeIn: '', timeOut: '', guardian: '', obs: '' });
+  const [amamentacaoForm, setAmamentacaoForm] = useState({ date: '', quantity: '', obs: '' });
 
   // Estados de Anexos do Modal "Lançar Ocorrência"
   const [formAttachment, setFormAttachment] = useState(null);
@@ -377,7 +377,7 @@ export default function App() {
     setSaidaForm({ date: todayStr, time: nowTimeStr, reason: '', guardian: '', hasReturn: 'nao', returnTime: '', obs: '', signature: '' });
     setAtestadoForm({ date: todayStr, startDate: todayStr, days: 1, endDate: todayStr, cid: '', reason: '', filePreview: '', obs: '' });
     setFaltaForm({ date: todayStr, startDate: todayStr, endDate: todayStr, reason: '', justified: 'nao', notified: 'nao', obs: '' });
-    setAmamentacaoForm({ date: todayStr, timeIn: nowTimeStr, timeOut: '', guardian: '', obs: '' });
+    setAmamentacaoForm({ date: todayStr, quantity: '', obs: '' });
 
     setFormAttachment(null);
     setIsDragging(false);
@@ -500,16 +500,14 @@ export default function App() {
         obs: faltaForm.obs.trim()
       };
     } else if (occType === 'amamentacao') {
-      if (!amamentacaoForm.date || !amamentacaoForm.timeIn || !amamentacaoForm.timeOut || !amamentacaoForm.guardian.trim()) {
-        alert('Preencha todos os campos obrigatórios.');
+      if (!amamentacaoForm.date || !amamentacaoForm.quantity) {
+        alert('Preencha a data e a quantidade.');
         return;
       }
       fullOccData = {
         ...baseOcc,
         date: amamentacaoForm.date,
-        timeIn: amamentacaoForm.timeIn,
-        timeOut: amamentacaoForm.timeOut,
-        guardian: amamentacaoForm.guardian.trim(),
+        quantity: parseInt(amamentacaoForm.quantity),
         obs: amamentacaoForm.obs.trim()
       };
     }
@@ -1344,7 +1342,7 @@ export default function App() {
                 {occType === 'amamentacao' && (
                   <div className="dynamic-fields-section">
                     <div className="form-row">
-                      <div className="form-group col-4">
+                      <div className="form-group col-6">
                         <label>Data de Uso*</label>
                         <input 
                           type="date" 
@@ -1353,42 +1351,24 @@ export default function App() {
                           onChange={(e) => setAmamentacaoForm({ ...amamentacaoForm, date: e.target.value })}
                         />
                       </div>
-                      <div className="form-group col-4">
-                        <label>Hora de Entrada*</label>
+                      <div className="form-group col-6">
+                        <label>Quantidade*</label>
                         <input 
-                          type="time" 
+                          type="number"
+                          min="1"
                           required
-                          value={amamentacaoForm.timeIn}
-                          onChange={(e) => setAmamentacaoForm({ ...amamentacaoForm, timeIn: e.target.value })}
-                        />
-                      </div>
-                      <div className="form-group col-4">
-                        <label>Hora de Saída*</label>
-                        <input 
-                          type="time" 
-                          required
-                          value={amamentacaoForm.timeOut}
-                          onChange={(e) => setAmamentacaoForm({ ...amamentacaoForm, timeOut: e.target.value })}
+                          placeholder="Ex: 1"
+                          value={amamentacaoForm.quantity}
+                          onChange={(e) => setAmamentacaoForm({ ...amamentacaoForm, quantity: e.target.value })}
                         />
                       </div>
                     </div>
 
                     <div className="form-group">
-                      <label>Nome da Mãe Acompanhante*</label>
-                      <input 
-                        type="text" 
-                        required 
-                        placeholder="Ex: Cláudia Nogueira"
-                        value={amamentacaoForm.guardian}
-                        onChange={(e) => setAmamentacaoForm({ ...amamentacaoForm, guardian: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label>Notas Clínicas / Condições do Bebê</label>
+                      <label>Observações (Opcional)</label>
                       <textarea 
                         rows={3}
-                        placeholder="Ex: Mamou super bem. Apresentou sonolência natural pós-alimentação."
+                        placeholder="Ex: Mamou tranquilamente. Bebê sonolento após a mamada."
                         value={amamentacaoForm.obs}
                         onChange={(e) => setAmamentacaoForm({ ...amamentacaoForm, obs: e.target.value })}
                       />
