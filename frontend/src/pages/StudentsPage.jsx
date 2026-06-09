@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Trash2, Undo, HelpCircle } from 'lucide-react';
+import { Plus, Search, Trash2, Undo, HelpCircle, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { getStudents, saveStudent, toggleStudentActive, deleteStudent } from '../supabaseClient';
 
@@ -16,6 +16,10 @@ export default function StudentsPage() {
 
   const [search, setSearch] = useState('');
   const [classroomFilter, setClassroomFilter] = useState('');
+  const [shiftFilter, setShiftFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sortField, setSortField] = useState('name'); // 'name' | 'classroom' | 'shift' | 'active'
+  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' | 'desc'
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [form, setForm] = useState({ name: '', classroom: '', active: 'active', shift: 'integral', entry_date: new Date().toISOString().split('T')[0], deactivation_date: new Date().toISOString().split('T')[0] });
@@ -114,13 +118,51 @@ export default function StudentsPage() {
     }
   };
 
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const renderSortIcon = (field) => {
+    if (sortField !== field) {
+      return <ArrowUpDown size={12} style={{ marginLeft: '6px', color: 'var(--slate-400)', verticalAlign: 'middle' }} />;
+    }
+    return sortDirection === 'asc'
+      ? <ChevronUp size={12} style={{ marginLeft: '6px', color: 'var(--color-primary)', verticalAlign: 'middle' }} />
+      : <ChevronDown size={12} style={{ marginLeft: '6px', color: 'var(--color-primary)', verticalAlign: 'middle' }} />;
+  };
+
   const displayed = students
     .filter(st => {
       const matchSearch = st.name.toLowerCase().includes(search.toLowerCase());
       const matchClass = !classroomFilter || st.classroom === classroomFilter;
-      return matchSearch && matchClass;
+      const matchShift = !shiftFilter || (st.shift || 'integral').toLowerCase() === shiftFilter.toLowerCase();
+      const matchStatus = !statusFilter || (statusFilter === 'active' ? st.active : !st.active);
+      return matchSearch && matchClass && matchShift && matchStatus;
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      let valA = '';
+      let valB = '';
+      if (sortField === 'name') {
+        valA = a.name || '';
+        valB = b.name || '';
+      } else if (sortField === 'classroom') {
+        valA = a.classroom || '';
+        valB = b.classroom || '';
+      } else if (sortField === 'shift') {
+        valA = a.shift || '';
+        valB = b.shift || '';
+      } else if (sortField === 'active') {
+        valA = a.active ? 'ativo' : 'inativo';
+        valB = b.active ? 'ativo' : 'inativo';
+      }
+      const comparison = valA.localeCompare(valB, 'pt', { sensitivity: 'base' });
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
 
   const getShiftBadgeClass = (shift) => {
     if (shift === 'matutino') return 'status-pill active';
@@ -145,6 +187,17 @@ export default function StudentsPage() {
             <option value="">Todas as Salas</option>
             {CLASSROOMS.map(c => <option key={c} value={c}>Sala {c}</option>)}
           </select>
+          <select value={shiftFilter} onChange={(e) => setShiftFilter(e.target.value)}>
+            <option value="">Todos os Turnos</option>
+            <option value="integral">Turno Integral</option>
+            <option value="matutino">Turno Matutino</option>
+            <option value="vespertino">Turno Vespertino</option>
+          </select>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">Todos os Status</option>
+            <option value="active">Alunos Ativos</option>
+            <option value="inactive">Alunos Inativos</option>
+          </select>
         </div>
         
         {activeUser?.role === 'diretora' && (
@@ -160,10 +213,18 @@ export default function StudentsPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Criança</th>
-                <th>Sala / Turma</th>
-                <th>Turno</th>
-                <th>Status</th>
+                <th onClick={() => handleSort('name')} style={{ cursor: 'pointer', userSelect: 'none', transition: 'background-color 0.2s' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.06)'} onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
+                  Criança {renderSortIcon('name')}
+                </th>
+                <th onClick={() => handleSort('classroom')} style={{ cursor: 'pointer', userSelect: 'none', transition: 'background-color 0.2s' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.06)'} onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
+                  Sala / Turma {renderSortIcon('classroom')}
+                </th>
+                <th onClick={() => handleSort('shift')} style={{ cursor: 'pointer', userSelect: 'none', transition: 'background-color 0.2s' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.06)'} onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
+                  Turno {renderSortIcon('shift')}
+                </th>
+                <th onClick={() => handleSort('active')} style={{ cursor: 'pointer', userSelect: 'none', transition: 'background-color 0.2s' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.06)'} onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
+                  Status {renderSortIcon('active')}
+                </th>
                 <th className="actions-column">Ações</th>
               </tr>
             </thead>

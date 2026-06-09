@@ -220,8 +220,8 @@ export default function ReportsPage() {
                 list.map(occ => (
                   <tr key={occ.id}>
                     <td><strong>{occ.date.split('-').reverse().join('/')}</strong></td>
-                    <td style={{ fontWeight: 600 }}>{occ.studentName}</td>
-                    <td><span className="occ-type-pill saida" style={{ backgroundColor: 'var(--color-saidas-bg)', color: 'var(--color-saidas)' }}>{occ.classroom}</span></td>
+                    <td style={{ fontWeight: 600 }}>{occ.type === 'amamentacao' ? '—' : occ.studentName}</td>
+                    <td>{occ.type === 'amamentacao' ? '—' : <span className="occ-type-pill saida" style={{ backgroundColor: 'var(--color-saidas-bg)', color: 'var(--color-saidas)' }}>{occ.classroom}</span>}</td>
                     <td><span className={`occ-type-pill ${occ.type}`}>{occ.type.toUpperCase()}</span></td>
                     <td>
                       {occ.type === 'atraso' && `Chegou às ${occ.time} - ${occ.motive} (Justificado: ${occ.justified === 'sim' ? 'Sim' : 'Não'})`}

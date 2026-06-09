@@ -788,12 +788,10 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                 )}
                 {activeCategory === 'amamentacao' && (
                   <tr>
-                    <th style={{ width: '12%' }}>Data</th>
-                    <th style={{ width: '28%' }}>Nome do Aluno</th>
-                    <th style={{ width: '13%' }}>Sala/Turma</th>
-                    <th style={{ width: '10%' }}>Quantidade</th>
-                    <th style={{ width: '22%' }}>Observação</th>
-                    <th style={{ width: '5%', textAlign: 'center' }}>Doc</th>
+                    <th style={{ width: '15%' }}>Data</th>
+                    <th style={{ width: '20%', textAlign: 'center' }}>Quantidade</th>
+                    <th style={{ width: '45%', textAlign: 'center' }}>Observação</th>
+                    <th style={{ width: '10%', textAlign: 'center' }}>Doc</th>
                     <th style={{ width: '10%', textAlign: 'center' }}>Ações</th>
                   </tr>
                 )}
@@ -817,22 +815,27 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                     <td style={{ fontWeight: 600, color: 'var(--slate-800)' }}>
                       {formatDateBR(occ.date)}
                     </td>
-                    <td>
-                      <div style={{ fontWeight: 600, color: 'var(--slate-800)', fontSize: '13px' }}>{occ.studentName}</div>
-                    </td>
-                    <td>
-                      <span className="room-badge" style={{
-                        display: 'inline-flex',
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        backgroundColor: '#e0e7ff',
-                        color: '#4338ca'
-                      }}>
-                        Sala {occ.classroom}
-                      </span>
-                    </td>
+                    
+                    {activeCategory !== 'amamentacao' && (
+                      <>
+                        <td>
+                          <div style={{ fontWeight: 600, color: 'var(--slate-800)', fontSize: '13px' }}>{occ.studentName}</div>
+                        </td>
+                        <td>
+                          <span className="room-badge" style={{
+                            display: 'inline-flex',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            backgroundColor: '#e0e7ff',
+                            color: '#4338ca'
+                          }}>
+                            Sala {occ.classroom}
+                          </span>
+                        </td>
+                      </>
+                    )}
 
                     {/* Dados específicos de Falta */}
                     {activeCategory === 'falta' && (
@@ -911,8 +914,8 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
                     {/* Dados específicos de Amamentação */}
                     {activeCategory === 'amamentacao' && (
                       <>
-                        <td style={{ fontWeight: 600, color: '#10b981' }}>{occ.quantity != null ? occ.quantity : '-'}</td>
-                        <td style={{ fontSize: '12px', color: 'var(--slate-600)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{occ.obs || '-'}</td>
+                        <td style={{ fontWeight: 600, color: '#10b981', textAlign: 'center' }}>{occ.quantity != null ? occ.quantity : '-'}</td>
+                        <td style={{ fontSize: '12px', color: 'var(--slate-600)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>{occ.obs || '-'}</td>
                       </>
                     )}
 

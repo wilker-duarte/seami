@@ -1201,6 +1201,7 @@ body.dark-mode .data-table tbody tr:hover {
     background-color: var(--bg-card);
 }
 
+.input-icon-wrapper svg,
 .input-icon-wrapper i {
     position: absolute;
     left: 14px;
