@@ -387,6 +387,40 @@ export default function App() {
   const handleSaveOccurrence = async (e) => {
     e.preventDefault();
     if (isSavingOccurrence) return;
+
+    // Amamentação não precisa de aluno vinculado
+    if (occType === 'amamentacao') {
+      if (!amamentacaoForm.date || !amamentacaoForm.quantity) {
+        alert('Preencha a data e a quantidade.');
+        return;
+      }
+      const amamData = {
+        type: 'amamentacao',
+        studentId: 'dummy_amamentacao',
+        studentName: 'Sala de Amamentação',
+        classroom: null,
+        date: amamentacaoForm.date,
+        quantity: parseInt(amamentacaoForm.quantity),
+        obs: amamentacaoForm.obs.trim()
+      };
+      amamData.attachmentName = formAttachment ? formAttachment.name : null;
+      amamData.attachmentType = formAttachment ? formAttachment.type : null;
+      amamData.attachmentData = formAttachment ? formAttachment.data : null;
+      try {
+        setIsSavingOccurrence(true);
+        const createdOcc = await saveOccurrence(amamData);
+        setOccurrences([createdOcc, ...occurrences]);
+        setIsOccurrenceModalOpen(false);
+        alert('Registro de amamentação gravado com sucesso!');
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao registrar no Supabase.');
+      } finally {
+        setIsSavingOccurrence(false);
+      }
+      return;
+    }
+
     if (!selectedStudentForOcc) {
       alert('Por favor, selecione um aluno ativo para registrar a ocorrência.');
       return;
@@ -398,7 +432,6 @@ export default function App() {
     else if (occType === 'saida') targetDate = saidaForm.date;
     else if (occType === 'atestado') targetDate = atestadoForm.date;
     else if (occType === 'falta') targetDate = faltaForm.date;
-    else if (occType === 'amamentacao') targetDate = amamentacaoForm.date;
 
     // Validação geral de duplicidade de ocorrência do mesmo tipo na mesma data
     if (targetDate) {
@@ -412,8 +445,7 @@ export default function App() {
           'atraso': 'atraso',
           'saida': 'saída antecipada',
           'atestado': 'atestado médico',
-          'falta': 'falta',
-          'amamentacao': 'amamentação'
+          'falta': 'falta'
         };
         const label = typeLabels[occType] || occType;
         alert(`Atenção: Já existe um lançamento de ${label} para esta criança nesta data (${targetDate.split('-').reverse().join('/')}).`);
@@ -856,41 +888,43 @@ export default function App() {
               <div className="form-body" style={{ maxHeight: '460px', overflowY: 'auto', padding: '20px 24px' }}>
 
                 {/* BUSCA DE ALUNO (quando não há pré-selecionado) */}
-                <div className="form-group" style={{ marginBottom: '16px', padding: '12px 14px', background: selectedStudentForOcc ? '#ecfdf5' : '#fffbeb', borderRadius: '10px', border: `1px solid ${selectedStudentForOcc ? '#a7f3d0' : '#fde68a'}` }}>
-                  <label style={{ fontWeight: 700, color: selectedStudentForOcc ? '#065f46' : '#92400e', fontSize: '13px' }}>
-                    {selectedStudentForOcc ? `✅ Aluno: ${selectedStudentForOcc.name} — Sala ${selectedStudentForOcc.classroom}` : '⚠️ Selecione o aluno para continuar'}
-                  </label>
-                  {!selectedStudentForOcc && (
-                    <div style={{ position: 'relative', marginTop: '8px' }}>
-                      <input
-                        type="text"
-                        placeholder="Buscar aluno por nome..."
-                        value={modalSearchQuery}
-                        onChange={(e) => setModalSearchQuery(e.target.value)}
-                        style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #fcd34d', fontSize: '13px', boxSizing: 'border-box' }}
-                      />
-                      {modalSearchResults.length > 0 && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 999, maxHeight: '200px', overflowY: 'auto' }}>
-                          {modalSearchResults.map(s => (
-                            <div
-                              key={s.id}
-                              onClick={() => { setSelectedStudentForOcc(s); setModalSearchQuery(s.name); setModalSearchResults([]); }}
-                              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: '13px', display: 'flex', justifyContent: 'space-between' }}
-                              onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                              onMouseLeave={e => e.currentTarget.style.background = 'white'}
-                            >
-                              <span style={{ fontWeight: 600 }}>{s.name}</span>
-                              <span style={{ color: '#64748b', fontSize: '12px' }}>Sala {s.classroom}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {selectedStudentForOcc && (
-                    <button type="button" onClick={() => { setSelectedStudentForOcc(null); setModalSearchQuery(''); }} style={{ marginTop: '6px', fontSize: '11px', color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Trocar aluno</button>
-                  )}
-                </div>
+                {occType !== 'amamentacao' && (
+                  <div className="form-group" style={{ marginBottom: '16px', padding: '12px 14px', background: selectedStudentForOcc ? '#ecfdf5' : '#fffbeb', borderRadius: '10px', border: `1px solid ${selectedStudentForOcc ? '#a7f3d0' : '#fde68a'}` }}>
+                    <label style={{ fontWeight: 700, color: selectedStudentForOcc ? '#065f46' : '#92400e', fontSize: '13px' }}>
+                      {selectedStudentForOcc ? `✅ Aluno: ${selectedStudentForOcc.name} — Sala ${selectedStudentForOcc.classroom}` : '⚠️ Selecione o aluno para continuar'}
+                    </label>
+                    {!selectedStudentForOcc && (
+                      <div style={{ position: 'relative', marginTop: '8px' }}>
+                        <input
+                          type="text"
+                          placeholder="Buscar aluno por nome..."
+                          value={modalSearchQuery}
+                          onChange={(e) => setModalSearchQuery(e.target.value)}
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #fcd34d', fontSize: '13px', boxSizing: 'border-box' }}
+                        />
+                        {modalSearchResults.length > 0 && (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 999, maxHeight: '200px', overflowY: 'auto' }}>
+                            {modalSearchResults.map(s => (
+                              <div
+                                key={s.id}
+                                onClick={() => { setSelectedStudentForOcc(s); setModalSearchQuery(s.name); setModalSearchResults([]); }}
+                                style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: '13px', display: 'flex', justifyContent: 'space-between' }}
+                                onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                              >
+                                <span style={{ fontWeight: 600 }}>{s.name}</span>
+                                <span style={{ color: '#64748b', fontSize: '12px' }}>Sala {s.classroom}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {selectedStudentForOcc && (
+                      <button type="button" onClick={() => { setSelectedStudentForOcc(null); setModalSearchQuery(''); }} style={{ marginTop: '6px', fontSize: '11px', color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Trocar aluno</button>
+                    )}
+                  </div>
+                )}
 
                 {/* DADOS DINÂMICOS: ATRASO */}
                 {occType === 'atraso' && (
@@ -1368,7 +1402,7 @@ export default function App() {
                       <label>Observações (Opcional)</label>
                       <textarea 
                         rows={3}
-                        placeholder="Ex: Mamou tranquilamente. Bebê sonolento após a mamada."
+                        placeholder="Ex: Sala limpa. Funcionando perfeitamente."
                         value={amamentacaoForm.obs}
                         onChange={(e) => setAmamentacaoForm({ ...amamentacaoForm, obs: e.target.value })}
                       />

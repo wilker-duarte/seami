@@ -352,7 +352,7 @@ export default function SeamiControl({ activeUser, activeModule, setActiveModule
       const payload = {
         id: isEditing ? editingId : undefined,
         type: 'amamentacao',
-        studentId: null,
+        studentId: 'dummy_amamentacao',
         studentName: 'Sala de Amamentação',
         classroom: null,
         date: formDate,

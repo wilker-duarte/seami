@@ -217,8 +217,10 @@ export async function getPessoas(type) {
 
 export async function getStudents() {
   const alumnos = await getPessoas('aluno');
-  return alumnos.map(a => {
-    let entryDate = null;
+  return alumnos
+    .filter(a => a.id !== 'dummy_amamentacao')
+    .map(a => {
+      let entryDate = null;
     let deactivationDate = null;
     if (a.description) {
       try {
@@ -510,17 +512,53 @@ export async function getOccurrenceAttachment(id) {
 
 export async function saveOccurrence(occ) {
   const id = occ.id || String(Date.now() + Math.floor(Math.random() * 1000));
-  const turmaId = (occ.studentId || occ.student_id)
-    ? (occ.turma_id || classesIdMap[occ.classroom] || '1')
+  
+  let studentId = occ.studentId || occ.student_id || null;
+  let studentName = occ.studentName || occ.studentname || null;
+  let classroom = occ.classroom || null;
+
+  if (occ.type === 'amamentacao') {
+    studentId = 'dummy_amamentacao';
+    studentName = 'Sala de Amamentação';
+    classroom = null;
+
+    // Garantir que o estudante dummy existe no Supabase
+    try {
+      const { data: existingDummy } = await supabase
+        .from('pessoas')
+        .select('id')
+        .eq('id', 'dummy_amamentacao')
+        .maybeSingle();
+        
+      if (!existingDummy) {
+        await supabase
+          .from('pessoas')
+          .insert({
+            id: 'dummy_amamentacao',
+            name: 'Sala de Amamentação',
+            type: 'aluno',
+            active: true,
+            turma_id: '1',
+            shift: 'integral'
+          });
+        console.log('[Supabase Client] Criou dummy_amamentacao com sucesso.');
+      }
+    } catch (e) {
+      console.warn('[Supabase Client] Falha ao verificar/criar dummy_amamentacao:', e);
+    }
+  }
+
+  const turmaId = studentId
+    ? (occ.turma_id || classesIdMap[classroom] || '1')
     : null;
   
   const payload = {
     id,
     type: occ.type,
-    student_id: occ.studentId || occ.student_id || null,
+    student_id: studentId,
     turma_id: turmaId,
-    studentname: sanitizeInput(occ.studentName || occ.studentname),  // coluna: studentname
-    classroom: turmaId ? (classesNameMap[turmaId] || occ.classroom || 'Alegria') : (occ.classroom || null),
+    studentname: sanitizeInput(studentName),  // coluna: studentname
+    classroom: turmaId ? (classesNameMap[turmaId] || classroom || 'Alegria') : (classroom || null),
     date: occ.date,
     time: occ.time || null,
     motive: sanitizeInput(occ.motive || null),
