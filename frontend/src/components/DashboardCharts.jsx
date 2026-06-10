@@ -3,12 +3,11 @@ import Chart from 'chart.js/auto';
 import { ClipboardCheck, BookOpen } from 'lucide-react';
 
 const OCC_TYPE_OPTIONS = [
-  { value: 'all',         label: 'Todos',          color: '#be185d', bg: '#fdf2f8' },
-  { value: 'atraso',      label: '⏰ Atrasos',      color: '#d97706', bg: '#fffbeb' },
-  { value: 'falta',       label: '📅 Faltas',       color: '#b91c1c', bg: '#fef2f2' },
-  { value: 'atestado',    label: '🏥 Atestados',    color: '#7c3aed', bg: '#f5f3ff' },
-  { value: 'saida',       label: '🚪 Saídas',       color: '#2563eb', bg: '#eff6ff' },
-  { value: 'amamentacao', label: '🤱 Amamentação',  color: '#047857', bg: '#ecfdf5' },
+  { value: 'all',      label: 'Todos',          color: '#be185d', bg: '#fdf2f8' },
+  { value: 'atraso',   label: '⏰ Atrasos',      color: '#d97706', bg: '#fffbeb' },
+  { value: 'falta',    label: '📅 Faltas',       color: '#b91c1c', bg: '#fef2f2' },
+  { value: 'atestado', label: '🏥 Atestados',    color: '#7c3aed', bg: '#f5f3ff' },
+  { value: 'saida',    label: '🚪 Saídas',       color: '#2563eb', bg: '#eff6ff' },
 ];
 
 export default function DashboardCharts({ occurrences, attendanceList, students, filters, isDark }) {
@@ -20,6 +19,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     atrasosMes:           useRef(null),
     motivos:              useRef(null),
     criancasRecorrentes:  useRef(null),
+    amamentacaoDiaria:    useRef(null),
   };
 
   const chartInstances = useRef({
@@ -28,7 +28,11 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     atrasosMes:           null,
     motivos:              null,
     criancasRecorrentes:  null,
+    amamentacaoDiaria:    null,
   });
+
+  // Estado do total de amamentação do período
+  const [amamTotal, setAmamTotal] = useState(0);
 
   // ──────────────────────────────────────────────────────────────────────────
   // Effect 1: Gráficos 1–4 (não dependem do filtro de tipo)
@@ -282,6 +286,120 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
   }, [occurrences, filters, isDark, occTypeFilter]);
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Effect 3: Gráfico de Amamentação — linha diária (últimos 30 dias ou filtro)
+  // ──────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fontColor = isDark ? '#94a3b8' : '#64748b';
+    const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)';
+
+    const { dateStart, dateEnd, classroom, studentId } = filters;
+
+    let amamOccs = (occurrences || []).filter(o => o.type === 'amamentacao');
+    if (classroom)  amamOccs = amamOccs.filter(o => o.classroom === classroom);
+    if (studentId)  amamOccs = amamOccs.filter(o => o.studentId === studentId);
+
+    // Determinar range de datas: filtro ou últimos 30 dias
+    const today = new Date();
+    let start, end;
+    if (dateStart && dateEnd) {
+      start = new Date(dateStart + 'T00:00:00');
+      end   = new Date(dateEnd   + 'T00:00:00');
+    } else if (dateStart) {
+      start = new Date(dateStart + 'T00:00:00');
+      end   = today;
+    } else if (dateEnd) {
+      end   = new Date(dateEnd + 'T00:00:00');
+      start = new Date(end);
+      start.setDate(end.getDate() - 29);
+    } else {
+      end   = today;
+      start = new Date();
+      start.setDate(today.getDate() - 29);
+    }
+
+    // Gerar lista de datas no intervalo
+    const dateList   = [];
+    const dateLabels = [];
+    const dateMap    = {};
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const iso = d.toISOString().split('T')[0];
+      dateList.push(iso);
+      dateLabels.push(d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }));
+      dateMap[iso] = 0;
+    }
+
+    // Somar o campo quantity por dia (igual a coluna Quantidade da tabela)
+    const startIso = dateList[0]  || '';
+    const endIso   = dateList[dateList.length - 1] || '';
+    amamOccs
+      .filter(o => o.date >= startIso && o.date <= endIso)
+      .forEach(o => {
+        if (dateMap[o.date] !== undefined) {
+          dateMap[o.date] += (parseInt(o.quantity) || 0);
+        }
+      });
+
+    const total = Object.values(dateMap).reduce((a, b) => a + b, 0);
+    setAmamTotal(total);
+
+    if (chartInstances.current.amamentacaoDiaria) {
+      chartInstances.current.amamentacaoDiaria.destroy();
+      chartInstances.current.amamentacaoDiaria = null;
+    }
+
+    const ctx = chartRefs.amamentacaoDiaria.current;
+    if (ctx) {
+      chartInstances.current.amamentacaoDiaria = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: dateLabels,
+          datasets: [{
+            label: 'Registros de Amamentação',
+            data: dateList.map(d => dateMap[d]),
+            borderColor: '#047857',
+            backgroundColor: 'rgba(4,120,87,0.08)',
+            tension: 0.35,
+            borderWidth: 3,
+            pointRadius: 4,
+            pointBackgroundColor: '#047857',
+            fill: true,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => ' ' + ctx.parsed.y + ' amamentacao(oes) no dia',
+              },
+            },
+          },
+          scales: {
+            y: {
+              grid: { color: gridColor },
+              ticks: { color: fontColor, stepSize: 1 },
+              min: 0,
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: fontColor, maxRotation: 45, minRotation: 0 },
+            },
+          },
+        },
+      });
+    }
+
+    return () => {
+      if (chartInstances.current.amamentacaoDiaria) {
+        chartInstances.current.amamentacaoDiaria.destroy();
+        chartInstances.current.amamentacaoDiaria = null;
+      }
+    };
+  }, [occurrences, filters, isDark]);
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Render
   // ──────────────────────────────────────────────────────────────────────────
   return (
@@ -323,7 +441,6 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
           Módulo II: Gráficos do Caderno de Registros SEAMI
         </h3>
         <div className="charts-grid">
-
           <div className="chart-card">
             <div className="chart-card-header">
               <h3>Volume de Atrasos Mensal</h3>
@@ -344,12 +461,9 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
             </div>
           </div>
 
-          {/* Chart 5 — com filtro por tipo de ocorrência */}
           <div className="chart-card full-width-chart">
             <div className="chart-card-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
               <h3>Crianças com Mais Ocorrências no Caderno</h3>
-
-              {/* Botões de filtro */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {OCC_TYPE_OPTIONS.map(opt => (
                   <button
@@ -375,9 +489,40 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                 ))}
               </div>
             </div>
-
             <div className="chart-container-large">
               <canvas ref={chartRefs.criancasRecorrentes}></canvas>
+            </div>
+          </div>
+
+          <div className="chart-card full-width-chart">
+            <div className="chart-card-header" style={{ flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <h3 style={{ margin: 0 }}>🤱 Registros de Amamentação por Dia</h3>
+                <span style={{ fontSize: '12px', color: 'var(--slate-500)', fontFamily: 'Inter, sans-serif' }}>
+                  {filters.dateStart && filters.dateEnd
+                    ? ('Periodo: ' + new Date(filters.dateStart + 'T00:00:00').toLocaleDateString('pt-BR') + ' a ' + new Date(filters.dateEnd + 'T00:00:00').toLocaleDateString('pt-BR'))
+                    : 'Ultimos 30 dias'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '6px 16px',
+                  backgroundColor: '#ecfdf5',
+                  borderRadius: '20px',
+                  border: '1.5px solid #6ee7b7',
+                }}>
+                  <span style={{ fontSize: '20px' }}>🤱</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                    <span style={{ fontSize: '18px', fontWeight: '800', color: '#047857', fontFamily: 'Outfit, sans-serif' }}>{amamTotal}</span>
+                    <span style={{ fontSize: '10px', color: '#065f46', fontWeight: 600, fontFamily: 'Inter, sans-serif' }}>total no período</span>
+                  </div>
+                </div>
+                <span className="chart-legend-pill" style={{ backgroundColor: '#ecfdf5', color: '#047857' }}>Amamentação</span>
+              </div>
+            </div>
+            <div className="chart-container-large">
+              <canvas ref={chartRefs.amamentacaoDiaria}></canvas>
             </div>
           </div>
 

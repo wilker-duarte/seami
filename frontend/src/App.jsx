@@ -16,7 +16,6 @@ import HomePage from './pages/HomePage';
 import DashboardPage from './pages/DashboardPage';
 import StudentsPage from './pages/StudentsPage';
 import ReportsPage from './pages/ReportsPage';
-import InsightsPage from './pages/InsightsPage';
 import SettingsPage from './pages/SettingsPage';
 
 import { 
@@ -109,9 +108,6 @@ export default function App() {
       setActiveModuleState('amamentacao');
     } else if (path === '/relatorios') {
       setActiveTabState('reports');
-      setActiveModuleState(null);
-    } else if (path === '/insights') {
-      setActiveTabState('insights');
       setActiveModuleState(null);
     } else if (path === '/configuracoes') {
       if (activeUser && activeUser.role === 'auxiliar') {
@@ -735,7 +731,6 @@ export default function App() {
             } 
           />
           <Route path="/relatorios" element={<ReportsPage />} />
-          <Route path="/insights" element={<InsightsPage />} />
           {activeUser?.role !== 'auxiliar' && (
             <Route 
               path="/configuracoes" 

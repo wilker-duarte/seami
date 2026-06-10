@@ -9,7 +9,6 @@ import {
   CalendarX, 
   Heart, 
   FileText, 
-  Sparkles, 
   Settings,
   ClipboardCheck,
   BookOpen,
@@ -135,19 +134,14 @@ export default function Sidebar({
           <FileText size={20} />
           <span>Relatórios do Caderno</span>
         </Link>
-        <Link to="/insights" className={getMenuClass('insights')} onClick={handleMenuClick}>
-          <Sparkles size={20} />
-          <span>Insights & Pedagogia</span>
-          <span className="badge-new">IA</span>
-        </Link>
         
-        {/* Oculta aba Configurações se o usuário for apenas Auxiliar */}
+        {/* Oculta aba Configurações se o usuário for apenas Auxiliar
         {activeUser?.role !== 'auxiliar' && (
           <Link to="/configuracoes" className={getMenuClass('settings')} onClick={handleMenuClick}>
             <Settings size={20} />
             <span>Configurações</span>
           </Link>
-        )}
+        )} */}
       </nav>
       
       {/* Rodapé da Sidebar */}

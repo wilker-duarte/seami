@@ -34,7 +34,6 @@ export default function Header({
       dashboard: { title: "Dashboard Geral", sub: "Visão geral e inteligência de frequência hoje." },
       students: { title: "Cadastro de Alunos", sub: "Adicione, edite e acompanhe os alunos matriculados." },
       reports: { title: "Relatórios de Gestão", sub: "Gere pesquisas complexas e exporte em Excel ou PDF." },
-      insights: { title: "Análise Inteligente & Insights", sub: "Estudos de padrões de faltas, atrasos e saúde médica." },
       settings: { title: "Configurações", sub: "Ajuste as opções do portal escolar e simule bases." },
       attendance: { title: "Lançar Chamada", sub: "Lançamento de frequência e presenças por sala de aula." },
       seami_control: { title: "Caderno SEAMI", sub: "Acompanhamento e registro de faltas, atestados, atrasos e amamentação." }
