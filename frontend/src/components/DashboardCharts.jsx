@@ -4,7 +4,6 @@ import { ClipboardCheck, BookOpen } from 'lucide-react';
 
 const OCC_TYPE_OPTIONS = [
   { value: 'all',      label: 'Todos',          color: '#be185d', bg: '#fdf2f8' },
-  { value: 'atraso',   label: '⏰ Atrasos',      color: '#d97706', bg: '#fffbeb' },
   { value: 'falta',    label: '📅 Faltas',       color: '#b91c1c', bg: '#fef2f2' },
   { value: 'atestado', label: '🏥 Atestados',    color: '#7c3aed', bg: '#f5f3ff' },
   { value: 'saida',    label: '🚪 Saídas',       color: '#2563eb', bg: '#eff6ff' },
@@ -21,6 +20,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     criancasRecorrentes:  useRef(null),
     amamentacaoDiaria:    useRef(null),
     faltasPorAluno:       useRef(null),
+    atrasosPorAluno:      useRef(null),
   };
 
   const chartInstances = useRef({
@@ -31,6 +31,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     criancasRecorrentes:  null,
     amamentacaoDiaria:    null,
     faltasPorAluno:       null,
+    atrasosPorAluno:      null,
   });
 
   // Estado do total de amamentação do período
@@ -288,6 +289,126 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
   }, [occurrences, filters, isDark, occTypeFilter]);
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Effect 5: Gráfico de Atrasos por Aluno (barras empilhadas)
+  // ──────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fontColor = isDark ? '#94a3b8' : '#64748b';
+    const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)';
+
+    const { classroom, studentId } = filters;
+    const currentYear = new Date().getFullYear();
+    const yearStart = `${currentYear}-01-01`;
+    const yearEnd   = `${currentYear}-12-31`;
+
+    // Filtrar atrasos do ano atual do caderno SEAMI (occurrences type=atraso)
+    let atrasosAno = (occurrences || []).filter(o => o.type === 'atraso' && o.date >= yearStart && o.date <= yearEnd);
+    if (classroom) atrasosAno = atrasosAno.filter(o => o.classroom === classroom);
+    if (studentId) atrasosAno = atrasosAno.filter(o => o.studentId === studentId);
+
+    // Agrupar por aluno
+    const studentMap = {}; // id -> { name, justified: 0, unjustified: 0 }
+    atrasosAno.forEach(o => {
+      if (!o.studentId || !o.studentName) return;
+      if (!studentMap[o.studentId]) studentMap[o.studentId] = { name: o.studentName, justified: 0, unjustified: 0 };
+      if (o.justified === 'sim') studentMap[o.studentId].justified++;
+      else studentMap[o.studentId].unjustified++;
+    });
+
+    // Ordenar por total de atrasos (desc), pegar top 15
+    const sorted = Object.entries(studentMap)
+      .map(([id, v]) => ({ ...v, total: v.justified + v.unjustified }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 15);
+
+    if (chartInstances.current.atrasosPorAluno) {
+      chartInstances.current.atrasosPorAluno.destroy();
+      chartInstances.current.atrasosPorAluno = null;
+    }
+
+    const ctx = chartRefs.atrasosPorAluno.current;
+    if (ctx) {
+      chartInstances.current.atrasosPorAluno = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: sorted.length > 0 ? sorted.map(s => s.name.split(' ').slice(0, 2).join(' ')) : ['Sem dados'],
+          datasets: [
+            {
+              label: 'Atrasos Justificados',
+              data: sorted.length > 0 ? sorted.map(s => s.justified) : [0],
+              backgroundColor: 'rgba(16, 185, 129, 0.82)',
+              borderColor: '#10b981',
+              borderWidth: 1,
+              borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 6, bottomRight: 6 },
+            },
+            {
+              label: 'Atrasos Não Justificados',
+              data: sorted.length > 0 ? sorted.map(s => s.unjustified) : [0],
+              backgroundColor: 'rgba(245, 158, 11, 0.82)',
+              borderColor: '#f59e0b',
+              borderWidth: 1,
+              borderRadius: { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+              labels: {
+                color: fontColor,
+                font: { family: 'Inter', size: 11, weight: 600 },
+                padding: 16,
+                usePointStyle: true,
+                pointStyleWidth: 12,
+              },
+            },
+            tooltip: {
+              callbacks: {
+                title: (items) => sorted[items[0].dataIndex]?.name ?? '',
+                afterBody: (items) => {
+                  const idx = items[0].dataIndex;
+                  const s = sorted[idx];
+                  if (!s) return [];
+                  const lines = [
+                    '',
+                    `📊 Total de atrasos: ${s.total}`,
+                    `✅ Justificados:     ${s.justified}`,
+                    `❌ Não Justificados: ${s.unjustified}`,
+                  ];
+                  return lines;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              stacked: true,
+              grid: { display: false },
+              ticks: { color: fontColor, font: { size: 11 }, maxRotation: 35, minRotation: 20 },
+            },
+            y: {
+              stacked: true,
+              grid: { color: gridColor },
+              ticks: { color: fontColor, stepSize: 1 },
+              min: 0,
+            },
+          },
+        },
+      });
+    }
+
+    return () => {
+      if (chartInstances.current.atrasosPorAluno) {
+        chartInstances.current.atrasosPorAluno.destroy();
+        chartInstances.current.atrasosPorAluno = null;
+      }
+    };
+  }, [occurrences, filters, isDark]);
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Effect 3: Gráfico de Amamentação — linha diária (últimos 30 dias ou filtro)
   // ──────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -471,8 +592,8 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
             {
               label: 'Faltas Justificadas',
               data: sorted.length > 0 ? sorted.map(s => s.justified) : [0],
-              backgroundColor: 'rgba(245, 158, 11, 0.82)',
-              borderColor: '#f59e0b',
+              backgroundColor: 'rgba(59, 130, 246, 0.82)',
+              borderColor: '#3b82f6',
               borderWidth: 1,
               borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 6, bottomRight: 6 },
             },
@@ -514,7 +635,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                     `✅ Justificadas:    ${s.justified}`,
                     `❌ Não Justificadas: ${s.unjustified}`,
                   ];
-                  if (s.total >= 10) lines.push('', '⚠️  Limite de 10 faltas atingido!');
+                  if (s.unjustified >= 10) lines.push('', '⚠️  Limite de 10 faltas não justificadas atingido!');
                   return lines;
                 },
               },
@@ -594,8 +715,8 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                 </span>
               </div>
               <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#92400e', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#fffbeb', border: '1px solid #fcd34d' }}>
-                  <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#f59e0b', display: 'inline-block' }}></span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#1e3a8a', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#3b82f6', display: 'inline-block' }}></span>
                   Justificadas
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#991b1b', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#fef2f2', border: '1px solid #fca5a5' }}>
@@ -603,12 +724,39 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                   Não Justificadas
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#4338ca', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#eef2ff', border: '1px solid #a5b4fc' }}>
-                  ⚠️ Limite: 10 faltas/ano
+                  ⚠️ Limite: 10 faltas não justificadas/ano
                 </span>
               </div>
             </div>
             <div className="chart-container-large">
               <canvas ref={chartRefs.faltasPorAluno}></canvas>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráfico de Atrasos por Aluno — Barras Empilhadas */}
+        <div className="charts-grid" style={{ marginTop: '20px' }}>
+          <div className="chart-card full-width-chart">
+            <div className="chart-card-header" style={{ flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <h3 style={{ margin: 0 }}>⏰ Atrasos por Aluno no Ano — Justificados vs Não Justificados</h3>
+                <span style={{ fontSize: '11.5px', color: 'var(--slate-500)', fontFamily: 'Inter, sans-serif' }}>
+                  Cada barra mostra o total de atrasos por aluno empilhado por tipo · Máx. 15 alunos com mais atrasos
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#065f46', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#10b981', display: 'inline-block' }}></span>
+                  Justificados
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#92400e', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#fffbeb', border: '1px solid #fcd34d' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#f59e0b', display: 'inline-block' }}></span>
+                  Não Justificados
+                </span>
+              </div>
+            </div>
+            <div className="chart-container-large">
+              <canvas ref={chartRefs.atrasosPorAluno}></canvas>
             </div>
           </div>
         </div>
