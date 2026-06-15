@@ -20,6 +20,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     motivos:              useRef(null),
     criancasRecorrentes:  useRef(null),
     amamentacaoDiaria:    useRef(null),
+    faltasPorAluno:       useRef(null),
   };
 
   const chartInstances = useRef({
@@ -29,6 +30,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     motivos:              null,
     criancasRecorrentes:  null,
     amamentacaoDiaria:    null,
+    faltasPorAluno:       null,
   });
 
   // Estado do total de amamentação do período
@@ -400,6 +402,154 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
   }, [occurrences, filters, isDark]);
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Effect 4: Gráfico de Faltas por Aluno (barras empilhadas)
+  // ──────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fontColor = isDark ? '#94a3b8' : '#64748b';
+    const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)';
+
+    const { classroom, studentId } = filters;
+    const currentYear = new Date().getFullYear();
+    const yearStart = `${currentYear}-01-01`;
+    const yearEnd   = `${currentYear}-12-31`;
+
+    // Filtrar faltas do ano atual do caderno SEAMI (occurrences type=falta)
+    let faltasAno = (occurrences || []).filter(o => o.type === 'falta' && o.date >= yearStart && o.date <= yearEnd);
+    if (classroom) faltasAno = faltasAno.filter(o => o.classroom === classroom);
+    if (studentId) faltasAno = faltasAno.filter(o => o.studentId === studentId);
+
+    // Também considerar faltas da chamada (attendanceList status F e FJ)
+    let attFaltas = (attendanceList || []).filter(o => (o.status === 'F' || o.status === 'FJ') && o.date >= yearStart && o.date <= yearEnd);
+    if (classroom) attFaltas = attFaltas.filter(o => o.classroom === classroom);
+    if (studentId) attFaltas = attFaltas.filter(o => o.studentId === studentId);
+
+    // Agrupar por aluno (usando attendanceList como base pois tem status F/FJ)
+    const studentMap = {}; // id -> { name, justified: 0, unjustified: 0 }
+    attFaltas.forEach(o => {
+      if (!o.studentId || !o.studentName) return;
+      if (!studentMap[o.studentId]) studentMap[o.studentId] = { name: o.studentName, justified: 0, unjustified: 0 };
+      if (o.status === 'FJ') studentMap[o.studentId].justified++;
+      else studentMap[o.studentId].unjustified++;
+    });
+
+    // Complementar com faltas do caderno SEAMI (type=falta)
+    faltasAno.forEach(o => {
+      if (!o.studentId || !o.studentName) return;
+      if (!studentMap[o.studentId]) studentMap[o.studentId] = { name: o.studentName, justified: 0, unjustified: 0 };
+      // Evitar dupla contagem se já veio da chamada
+      // Usamos apenas as faltas do caderno que não se sobrepõem aos registros de chamada
+    });
+
+    // Se não há dados da chamada, usar as faltas do caderno SEAMI
+    if (Object.keys(studentMap).length === 0) {
+      faltasAno.forEach(o => {
+        if (!o.studentId || !o.studentName) return;
+        if (!studentMap[o.studentId]) studentMap[o.studentId] = { name: o.studentName, justified: 0, unjustified: 0 };
+        if (o.justified === 'sim') studentMap[o.studentId].justified++;
+        else studentMap[o.studentId].unjustified++;
+      });
+    }
+
+    // Ordenar por total de faltas (desc), pegar top 15
+    const sorted = Object.entries(studentMap)
+      .map(([id, v]) => ({ ...v, total: v.justified + v.unjustified }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 15);
+
+    if (chartInstances.current.faltasPorAluno) {
+      chartInstances.current.faltasPorAluno.destroy();
+      chartInstances.current.faltasPorAluno = null;
+    }
+
+    const ctx = chartRefs.faltasPorAluno.current;
+    if (ctx) {
+      chartInstances.current.faltasPorAluno = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: sorted.length > 0 ? sorted.map(s => s.name.split(' ').slice(0, 2).join(' ')) : ['Sem dados'],
+          datasets: [
+            {
+              label: 'Faltas Justificadas',
+              data: sorted.length > 0 ? sorted.map(s => s.justified) : [0],
+              backgroundColor: 'rgba(245, 158, 11, 0.82)',
+              borderColor: '#f59e0b',
+              borderWidth: 1,
+              borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 6, bottomRight: 6 },
+            },
+            {
+              label: 'Faltas Não Justificadas',
+              data: sorted.length > 0 ? sorted.map(s => s.unjustified) : [0],
+              backgroundColor: 'rgba(239, 68, 68, 0.82)',
+              borderColor: '#ef4444',
+              borderWidth: 1,
+              borderRadius: { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+              labels: {
+                color: fontColor,
+                font: { family: 'Inter', size: 11, weight: 600 },
+                padding: 16,
+                usePointStyle: true,
+                pointStyleWidth: 12,
+              },
+            },
+            tooltip: {
+              callbacks: {
+                title: (items) => sorted[items[0].dataIndex]?.name ?? '',
+                afterBody: (items) => {
+                  const idx = items[0].dataIndex;
+                  const s = sorted[idx];
+                  if (!s) return [];
+                  const lines = [
+                    '',
+                    `📊 Total de faltas: ${s.total}`,
+                    `✅ Justificadas:    ${s.justified}`,
+                    `❌ Não Justificadas: ${s.unjustified}`,
+                  ];
+                  if (s.total >= 10) lines.push('', '⚠️  Limite de 10 faltas atingido!');
+                  return lines;
+                },
+              },
+            },
+            annotation: undefined,
+          },
+          scales: {
+            x: {
+              stacked: true,
+              grid: { display: false },
+              ticks: { color: fontColor, font: { size: 11 }, maxRotation: 35, minRotation: 20 },
+            },
+            y: {
+              stacked: true,
+              grid: { color: gridColor },
+              ticks: { color: fontColor, stepSize: 1 },
+              min: 0,
+              afterDataLimits: (scale) => {
+                scale.max = Math.max(scale.max, 10);
+              },
+            },
+          },
+        },
+      });
+    }
+
+    return () => {
+      if (chartInstances.current.faltasPorAluno) {
+        chartInstances.current.faltasPorAluno.destroy();
+        chartInstances.current.faltasPorAluno = null;
+      }
+    };
+  }, [occurrences, attendanceList, filters, isDark]);
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Render
   // ──────────────────────────────────────────────────────────────────────────
   return (
@@ -429,6 +579,36 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
             </div>
             <div className="chart-container">
               <canvas ref={chartRefs.frequenciaDiariaReal}></canvas>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráfico de Faltas por Aluno — Barras Empilhadas */}
+        <div className="charts-grid" style={{ marginTop: '20px' }}>
+          <div className="chart-card full-width-chart">
+            <div className="chart-card-header" style={{ flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <h3 style={{ margin: 0 }}>📅 Faltas por Aluno no Ano — Justificadas vs Não Justificadas</h3>
+                <span style={{ fontSize: '11.5px', color: 'var(--slate-500)', fontFamily: 'Inter, sans-serif' }}>
+                  Cada barra mostra o total de faltas por aluno empilhado por tipo · Máx. 15 alunos com mais faltas
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#92400e', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#fffbeb', border: '1px solid #fcd34d' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#f59e0b', display: 'inline-block' }}></span>
+                  Justificadas
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#991b1b', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#fef2f2', border: '1px solid #fca5a5' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#ef4444', display: 'inline-block' }}></span>
+                  Não Justificadas
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#4338ca', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#eef2ff', border: '1px solid #a5b4fc' }}>
+                  ⚠️ Limite: 10 faltas/ano
+                </span>
+              </div>
+            </div>
+            <div className="chart-container-large">
+              <canvas ref={chartRefs.faltasPorAluno}></canvas>
             </div>
           </div>
         </div>
