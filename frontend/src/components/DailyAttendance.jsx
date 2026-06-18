@@ -8,6 +8,7 @@ import {
   X, 
   AlertCircle, 
   Filter, 
+  ChevronLeft,
   ChevronRight, 
   FileSpreadsheet, 
   FileText,
@@ -31,6 +32,68 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isAttendanceSaved, setIsAttendanceSaved] = useState(false);
+
+  // Auxiliares do Mini Calendário Semanal
+  const checkHasAttendance = (dateStr) => {
+    if (selectedClassroom === 'all') {
+      return allAttendanceData.some(r => r.date === dateStr);
+    }
+    return allAttendanceData.some(r => r.date === dateStr && r.classroom === selectedClassroom);
+  };
+
+  const getDaysOfMonth = (currentDateStr) => {
+    const current = new Date(currentDateStr + 'T12:00:00');
+    const year = current.getFullYear();
+    const month = current.getMonth(); // 0-indexed
+
+    // First day of the month
+    const firstDay = new Date(year, month, 1, 12, 0, 0);
+    const startDayOfWeek = firstDay.getDay(); // 0 = Sunday, 1 = Monday, etc.
+
+    // Number of days in the month
+    const numDays = new Date(year, month + 1, 0).getDate();
+
+    const days = [];
+
+    // Add empty padding days for the beginning of the grid
+    for (let i = 0; i < startDayOfWeek; i++) {
+      days.push({
+        padding: true,
+        key: `pad-${i}`
+      });
+    }
+
+    // Add actual days of the month
+    for (let d = 1; d <= numDays; d++) {
+      const dateObj = new Date(year, month, d, 12, 0, 0);
+      const dateStr = dateObj.toISOString().split('T')[0];
+      days.push({
+        dayOfMonth: d,
+        date: dateStr,
+        isSelected: dateStr === currentDateStr,
+        isToday: dateStr === new Date().toISOString().split('T')[0],
+        isWeekend: dateObj.getDay() === 0 || dateObj.getDay() === 6,
+        key: dateStr
+      });
+    }
+
+    return days;
+  };
+
+  const handleNavigateMonth = (direction) => {
+    const current = new Date(attendanceDate + 'T12:00:00');
+    current.setMonth(current.getMonth() + direction);
+    setAttendanceDate(current.toISOString().split('T')[0]);
+  };
+
+  const getMonthYearLabel = (currentDateStr) => {
+    const current = new Date(currentDateStr + 'T12:00:00');
+    const monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    return `${monthNames[current.getMonth()]} de ${current.getFullYear()}`;
+  };
 
   // Auxiliares visuais para o design de alta fidelidade
   const getInitials = (name) => {
@@ -789,45 +852,241 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
           ========================================== */}
       {frequencyTab === 'lancamento' && (
         <>
-          <div className="filter-card" style={{ marginBottom: '24px' }}>
-            <div className="filter-card-header">
-              <div className="filter-card-title">
-                <ClipboardCheck size={18} style={{ color: 'var(--brand-primary)' }} />
-                <span>Registrar Chamada</span>
-              </div>
-            </div>
-            
-            <div className="responsive-grid-3" style={{ padding: '20px' }}>
-              <div className="filter-group">
-                <label>Turma / Sala</label>
-                <select 
-                  value={selectedClassroom} 
-                  onChange={(e) => setSelectedClassroom(e.target.value)}
-                  className="form-control"
-                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--slate-200)' }}
-                >
-                  <option value="all">Todas as Salas</option>
-                  {classrooms.map(room => (
-                    <option key={room} value={room}>Sala {room}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="filter-group">
-                <label>Data da Chamada</label>
-                <div style={{ position: 'relative' }}>
-                  <input 
-                    type="date" 
-                    value={attendanceDate}
-                    onChange={(e) => setAttendanceDate(e.target.value)}
-                    className="form-control"
-                    style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid var(--slate-200)' }}
-                  />
-                  <Calendar size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--slate-400)' }} />
+          {/* Calendário e Formulário Lado a Lado */}
+          <div style={{
+            display: 'flex',
+            gap: '20px',
+            marginBottom: '24px',
+            flexWrap: 'wrap',
+            alignItems: 'stretch'
+          }}>
+            {/* Calendário Mensal de Acompanhamento */}
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              border: '1px solid var(--slate-100)',
+              boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.02)',
+              flex: '1 1 300px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center'
+            }}>
+              {/* Cabeçalho do Calendário */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '10px'
+              }}>
+                <div>
+                  <span style={{ 
+                    fontSize: '9px', 
+                    fontWeight: 700, 
+                    color: 'var(--brand-primary)', 
+                    textTransform: 'uppercase', 
+                    letterSpacing: '0.5px',
+                    display: 'block',
+                    marginBottom: '1px'
+                  }}>
+                    Acompanhamento Mensal
+                  </span>
+                  <h4 style={{ 
+                    fontFamily: 'Outfit, sans-serif', 
+                    fontSize: '13px', 
+                    fontWeight: 700, 
+                    color: 'var(--slate-800)',
+                    margin: 0
+                  }}>
+                    {getMonthYearLabel(attendanceDate)}
+                  </h4>
+                </div>
+
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {/* Navegar Mês Anterior */}
+                  <button 
+                    onClick={() => handleNavigateMonth(-1)}
+                    title="Mês Anterior"
+                    style={{
+                      border: '1px solid var(--slate-200)',
+                      backgroundColor: 'white',
+                      borderRadius: '6px',
+                      width: '26px',
+                      height: '26px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: 'var(--slate-600)',
+                      transition: 'all 0.15s'
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'white'; }}
+                  >
+                    <ChevronLeft size={13} />
+                  </button>
+
+                  {/* Navegar Próximo Mês */}
+                  <button 
+                    onClick={() => handleNavigateMonth(1)}
+                    title="Próximo Mês"
+                    style={{
+                      border: '1px solid var(--slate-200)',
+                      backgroundColor: 'white',
+                      borderRadius: '6px',
+                      width: '26px',
+                      height: '26px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: 'var(--slate-600)',
+                      transition: 'all 0.15s'
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'white'; }}
+                  >
+                    <ChevronRight size={13} />
+                  </button>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              {/* Grid do Calendário */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(7, 1fr)',
+                gap: '4px',
+                textAlign: 'center'
+              }}>
+                {/* Dias da Semana Cabecalho */}
+                {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(w => (
+                  <div key={w} style={{
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    color: 'var(--slate-400)',
+                    textTransform: 'uppercase',
+                    padding: '2px 0'
+                  }}>
+                    {w}
+                  </div>
+                ))}
+
+                {/* Dias do Mês */}
+                {getDaysOfMonth(attendanceDate).map((day, idx) => {
+                  if (day.padding) {
+                    return <div key={day.key} />;
+                  }
+
+                  const hasAttendance = checkHasAttendance(day.date);
+                  return (
+                    <button
+                      key={day.key}
+                      onClick={() => setAttendanceDate(day.date)}
+                      style={{
+                        border: day.isSelected 
+                          ? '2px solid var(--brand-primary)' 
+                          : '1px solid var(--slate-100)',
+                        backgroundColor: day.isSelected 
+                          ? '#f5f3ff' 
+                          : day.isToday 
+                            ? '#eff6ff' 
+                            : 'white',
+                        borderRadius: '6px',
+                        padding: '6px 2px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '2px',
+                        cursor: 'pointer',
+                        transition: 'all 0.1s',
+                        minHeight: '38px',
+                        boxShadow: day.isSelected ? '0 1px 2px rgba(99, 102, 241, 0.1)' : 'none'
+                      }}
+                      onMouseOver={(e) => {
+                        if (!day.isSelected) e.currentTarget.style.backgroundColor = '#f8fafc';
+                      }}
+                      onMouseOut={(e) => {
+                        if (!day.isSelected) e.currentTarget.style.backgroundColor = day.isToday ? '#eff6ff' : 'white';
+                      }}
+                    >
+                      <span style={{ 
+                        fontSize: '11px', 
+                        fontWeight: 700, 
+                        color: day.isSelected 
+                          ? 'var(--brand-primary)' 
+                          : day.isWeekend 
+                            ? 'var(--slate-400)' 
+                            : 'var(--slate-700)',
+                        fontFamily: 'Outfit, sans-serif'
+                      }}>
+                        {day.dayOfMonth}
+                      </span>
+                      
+                      {/* Indicador de Status da chamada */}
+                      <div style={{ height: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {day.isWeekend ? null : hasAttendance ? (
+                          <div style={{
+                            backgroundColor: '#10b981',
+                            borderRadius: '50%',
+                            width: '8px',
+                            height: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white'
+                          }}>
+                            <Check size={6} strokeWidth={5} />
+                          </div>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Registrar Chamada form */}
+            <div className="filter-card" style={{ flex: '2 1 450px', margin: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '20px' }}>
+              <div className="filter-card-header" style={{ marginBottom: '12px' }}>
+                <div className="filter-card-title">
+                  <ClipboardCheck size={18} style={{ color: 'var(--brand-primary)' }} />
+                  <span>Registrar Chamada</span>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, justifyContent: 'center' }}>
+                <div className="filter-group">
+                  <label style={{ fontWeight: 600, fontSize: '12.5px', color: 'var(--slate-600)' }}>Turma / Sala</label>
+                  <select 
+                    value={selectedClassroom} 
+                    onChange={(e) => setSelectedClassroom(e.target.value)}
+                    className="form-control"
+                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--slate-200)' }}
+                  >
+                    <option value="all">Todas as Salas</option>
+                    {classrooms.map(room => (
+                      <option key={room} value={room}>Sala {room}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="filter-group">
+                  <label style={{ fontWeight: 600, fontSize: '12.5px', color: 'var(--slate-600)' }}>Data da Chamada</label>
+                  <div style={{ position: 'relative' }}>
+                    <input 
+                      type="date" 
+                      value={attendanceDate}
+                      onChange={(e) => setAttendanceDate(e.target.value)}
+                      className="form-control"
+                      style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid var(--slate-200)' }}
+                    />
+                    <Calendar size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--slate-400)' }} />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '20px' }}>
                 <button 
                   onClick={handleSaveAttendance}
                   disabled={saving || loadingStudents || students.length === 0}
