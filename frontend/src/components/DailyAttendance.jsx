@@ -30,6 +30,7 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const [absenceReasons, setAbsenceReasons] = useState({}); // { studentId: { type: 'falta' | 'atestado', text: '...' } }
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isAttendanceSaved, setIsAttendanceSaved] = useState(false);
 
   // Auxiliares visuais para o design de alta fidelidade
   const getInitials = (name) => {
@@ -319,9 +320,13 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
         date: attendanceDate
       });
       
-      if (attendanceData && attendanceData.length > 0) {
+      const saved = attendanceData && attendanceData.length > 0;
+      setIsAttendanceSaved(saved);
+
+      const studentIds = new Set(filtered.map(s => s.id));
+      if (saved) {
         attendanceData.forEach(record => {
-          if (map[record.studentId] !== undefined) {
+          if (studentIds.has(record.studentId)) {
             map[record.studentId] = record.status;
           }
         });
@@ -397,6 +402,7 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       });
 
       showAlert('success', 'Chamada salva com sucesso!');
+      setIsAttendanceSaved(true);
       fetchLogs(); 
       fetchAllAttendanceForReports();
     } catch (error) {
@@ -856,9 +862,32 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
               <h3 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '15px', fontWeight: 600, color: 'var(--slate-800)' }}>
                 Alunos da Turma ({students.length})
               </h3>
-              <span style={{ fontSize: '12px', color: 'var(--slate-500)' }}>
-                Autor do registro: <strong>{activeUser.name}</strong>
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  backgroundColor: isAttendanceSaved ? '#ecfdf5' : '#fffbeb',
+                  color: isAttendanceSaved ? '#047857' : '#b45309',
+                  border: `1px solid ${isAttendanceSaved ? '#a7f3d0' : '#fcd34d'}`,
+                }}>
+                  <span style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    backgroundColor: isAttendanceSaved ? '#10b981' : '#f59e0b',
+                    display: 'inline-block'
+                  }} />
+                  {isAttendanceSaved ? 'Chamada Salva' : 'Chamada não realizada'}
+                </span>
+                <span style={{ fontSize: '12px', color: 'var(--slate-500)' }}>
+                  Autor do registro: <strong>{activeUser.name}</strong>
+                </span>
+              </div>
             </div>
 
             {loadingStudents ? (
