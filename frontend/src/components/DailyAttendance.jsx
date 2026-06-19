@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { 
   ClipboardCheck, 
   Search, 
@@ -23,9 +24,47 @@ import {
 import { getStudents, getAttendance, saveAttendanceBulk, getOccurrences } from '../supabaseClient';
 
 export default function DailyAttendance({ activeUser, initialTab, setActiveModule }) {
+  const location = useLocation();
+
+  const getInitialClassroom = () => {
+    if (location.state?.classroom) return location.state.classroom;
+    const params = new URLSearchParams(location.search);
+    const roomParam = params.get('classroom');
+    if (roomParam) return roomParam;
+    return 'Alegria';
+  };
+
+  const getInitialDate = () => {
+    if (location.state?.date) return location.state.date;
+    const params = new URLSearchParams(location.search);
+    const dateParam = params.get('date');
+    if (dateParam) return dateParam;
+    return new Date().toISOString().split('T')[0];
+  };
+
   const [classrooms] = useState(['Alegria', 'Carinho', 'União', 'Amizade', 'Felicidade']);
-  const [selectedClassroom, setSelectedClassroom] = useState('Alegria');
-  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedClassroom, setSelectedClassroom] = useState(getInitialClassroom);
+  const [attendanceDate, setAttendanceDate] = useState(getInitialDate);
+
+  // Sincroniza estado com location.state ou query parameters da URL (ex: redirecionamento a partir do gráfico)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    
+    const stateClassroom = location.state?.classroom;
+    const queryClassroom = params.get('classroom');
+    const targetClassroom = stateClassroom || queryClassroom;
+    if (targetClassroom && classrooms.includes(targetClassroom) && targetClassroom !== selectedClassroom) {
+      setSelectedClassroom(targetClassroom);
+    }
+
+    const stateDate = location.state?.date;
+    const queryDate = params.get('date');
+    const targetDate = stateDate || queryDate;
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (targetDate && dateRegex.test(targetDate) && targetDate !== attendanceDate) {
+      setAttendanceDate(targetDate);
+    }
+  }, [location, classrooms, selectedClassroom, attendanceDate]);
   const [students, setStudents] = useState([]);
   const [attendanceMap, setAttendanceMap] = useState({}); // { studentId: 'P' | 'F' | 'FJ' }
   const [absenceReasons, setAbsenceReasons] = useState({}); // { studentId: { type: 'falta' | 'atestado', text: '...' } }
@@ -33,12 +72,15 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const [saving, setSaving] = useState(false);
   const [isAttendanceSaved, setIsAttendanceSaved] = useState(false);
 
+  const [calendarAttendance, setCalendarAttendance] = useState([]);
+  const [loadingCalendar, setLoadingCalendar] = useState(false);
+
   // Auxiliares do Mini Calendário Semanal
   const checkHasAttendance = (dateStr) => {
     if (selectedClassroom === 'all') {
-      return allAttendanceData.some(r => r.date === dateStr);
+      return calendarAttendance.some(r => r.date === dateStr);
     }
-    return allAttendanceData.some(r => r.date === dateStr && r.classroom === selectedClassroom);
+    return calendarAttendance.some(r => r.date === dateStr && r.classroom === selectedClassroom);
   };
 
   const getDaysOfMonth = (currentDateStr) => {
@@ -333,6 +375,38 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
     }
   }, [frequencyTab]);
 
+  // Recarrega o calendário de forma otimizada para o mês/ano atualmente exibido
+  useEffect(() => {
+    if (attendanceDate) {
+      fetchCalendarAttendance();
+    }
+  }, [selectedClassroom, attendanceDate ? attendanceDate.slice(0, 7) : null]);
+
+  const fetchCalendarAttendance = async () => {
+    if (!attendanceDate) return;
+    setLoadingCalendar(true);
+    try {
+      const current = new Date(attendanceDate + 'T12:00:00');
+      const year = current.getFullYear();
+      const month = current.getMonth(); // 0-indexed
+      
+      const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      const monthEnd = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      
+      const data = await getAttendance({
+        startDate: monthStart,
+        endDate: monthEnd,
+        classroom: selectedClassroom
+      });
+      setCalendarAttendance(data || []);
+    } catch (error) {
+      console.error("[DailyAttendance] Erro ao obter chamadas para o calendário:", error);
+    } finally {
+      setLoadingCalendar(false);
+    }
+  };
+
   const fetchStudents = async () => {
     setLoadingStudents(true);
     try {
@@ -467,6 +541,7 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       showAlert('success', 'Chamada salva com sucesso!');
       setIsAttendanceSaved(true);
       fetchLogs(); 
+      fetchCalendarAttendance();
       fetchAllAttendanceForReports();
     } catch (error) {
       console.error('[DailyAttendance] Erro ao salvar chamada:', error);

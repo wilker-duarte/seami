@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Chart from 'chart.js/auto';
 import { ClipboardCheck, BookOpen } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const OCC_TYPE_OPTIONS = [
   { value: 'all',      label: 'Todos',          color: '#be185d', bg: '#fdf2f8' },
@@ -10,7 +11,17 @@ const OCC_TYPE_OPTIONS = [
 ];
 
 export default function DashboardCharts({ occurrences, attendanceList, students, filters, isDark }) {
+  const navigate = useNavigate();
   const [occTypeFilter, setOccTypeFilter] = useState('all');
+
+  // Estados de controle das séries dos gráficos interativos
+  const [showFaltasJustified, setShowFaltasJustified] = useState(false);
+  const [showFaltasUnjustified, setShowFaltasUnjustified] = useState(true);
+  const [showAtrasosJustified, setShowAtrasosJustified] = useState(false);
+  const [showAtrasosUnjustified, setShowAtrasosUnjustified] = useState(true);
+  
+  // Estado para abrir a modal de detalhamento do aluno
+  const [selectedStudentDetails, setSelectedStudentDetails] = useState(null);
 
   const chartRefs = {
     frequenciaSala:       useRef(null),
@@ -306,17 +317,39 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     if (studentId) atrasosAno = atrasosAno.filter(o => o.studentId === studentId);
 
     // Agrupar por aluno
-    const studentMap = {}; // id -> { name, justified: 0, unjustified: 0 }
+    const studentMap = {}; // id -> { name, classroom, justified: 0, unjustified: 0, records: [] }
     atrasosAno.forEach(o => {
       if (!o.studentId || !o.studentName) return;
-      if (!studentMap[o.studentId]) studentMap[o.studentId] = { name: o.studentName, justified: 0, unjustified: 0 };
+      if (!studentMap[o.studentId]) {
+        studentMap[o.studentId] = { 
+          id: o.studentId, 
+          name: o.studentName, 
+          classroom: o.classroom || 'Alegria', 
+          justified: 0, 
+          unjustified: 0, 
+          records: [] 
+        };
+      }
+      studentMap[o.studentId].records.push({
+        date: o.date,
+        justified: o.justified, // 'sim' | 'nao'
+        motive: o.motive || 'Sem justificativa declarada',
+        classroom: o.classroom || 'Alegria',
+        type: 'atraso'
+      });
       if (o.justified === 'sim') studentMap[o.studentId].justified++;
       else studentMap[o.studentId].unjustified++;
     });
 
-    // Ordenar por total de atrasos (desc), pegar top 15
+    // Ordenar por total ativo (desc), pegar top 15
     const sorted = Object.entries(studentMap)
-      .map(([id, v]) => ({ ...v, total: v.justified + v.unjustified }))
+      .map(([id, v]) => {
+        let activeTotal = 0;
+        if (showAtrasosJustified) activeTotal += v.justified;
+        if (showAtrasosUnjustified) activeTotal += v.unjustified;
+        return { ...v, id, total: activeTotal };
+      })
+      .filter(s => s.total > 0)
       .sort((a, b) => b.total - a.total)
       .slice(0, 15);
 
@@ -327,43 +360,55 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
 
     const ctx = chartRefs.atrasosPorAluno.current;
     if (ctx) {
+      const datasets = [];
+      if (showAtrasosJustified) {
+        datasets.push({
+          label: 'Atrasos Justificados',
+          data: sorted.length > 0 ? sorted.map(s => s.justified) : [0],
+          backgroundColor: 'rgba(16, 185, 129, 0.82)',
+          borderColor: '#10b981',
+          borderWidth: 1,
+          borderRadius: showAtrasosUnjustified ? { topLeft: 0, topRight: 0, bottomLeft: 6, bottomRight: 6 } : 6,
+        });
+      }
+      if (showAtrasosUnjustified) {
+        datasets.push({
+          label: 'Atrasos Não Justificados',
+          data: sorted.length > 0 ? sorted.map(s => s.unjustified) : [0],
+          backgroundColor: 'rgba(245, 158, 11, 0.82)',
+          borderColor: '#f59e0b',
+          borderWidth: 1,
+          borderRadius: showAtrasosJustified ? { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 } : 6,
+        });
+      }
+
       chartInstances.current.atrasosPorAluno = new Chart(ctx, {
         type: 'bar',
         data: {
           labels: sorted.length > 0 ? sorted.map(s => s.name.split(' ').slice(0, 2).join(' ')) : ['Sem dados'],
-          datasets: [
-            {
-              label: 'Atrasos Justificados',
-              data: sorted.length > 0 ? sorted.map(s => s.justified) : [0],
-              backgroundColor: 'rgba(16, 185, 129, 0.82)',
-              borderColor: '#10b981',
-              borderWidth: 1,
-              borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 6, bottomRight: 6 },
-            },
-            {
-              label: 'Atrasos Não Justificados',
-              data: sorted.length > 0 ? sorted.map(s => s.unjustified) : [0],
-              backgroundColor: 'rgba(245, 158, 11, 0.82)',
-              borderColor: '#f59e0b',
-              borderWidth: 1,
-              borderRadius: { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
-            },
-          ],
+          datasets: datasets.length > 0 ? datasets : [{ label: 'Sem dados selecionados', data: sorted.map(() => 0), backgroundColor: 'rgba(0,0,0,0.05)' }],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          onClick: (event, elements) => {
+            if (elements.length > 0) {
+              const elementIndex = elements[0].index;
+              const student = sorted[elementIndex];
+              if (student) {
+                setSelectedStudentDetails({
+                  id: student.id,
+                  name: student.name,
+                  classroom: student.classroom,
+                  chartType: 'atraso',
+                  records: student.records || []
+                });
+              }
+            }
+          },
           plugins: {
             legend: {
-              display: true,
-              position: 'top',
-              labels: {
-                color: fontColor,
-                font: { family: 'Inter', size: 11, weight: 600 },
-                padding: 16,
-                usePointStyle: true,
-                pointStyleWidth: 12,
-              },
+              display: false,
             },
             tooltip: {
               callbacks: {
@@ -374,7 +419,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                   if (!s) return [];
                   const lines = [
                     '',
-                    `📊 Total de atrasos: ${s.total}`,
+                    `📊 Total exibido:    ${s.total}`,
                     `✅ Justificados:     ${s.justified}`,
                     `❌ Não Justificados: ${s.unjustified}`,
                   ];
@@ -406,7 +451,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
         chartInstances.current.atrasosPorAluno = null;
       }
     };
-  }, [occurrences, filters, isDark]);
+  }, [occurrences, filters, isDark, showAtrasosJustified, showAtrasosUnjustified]);
 
   // ──────────────────────────────────────────────────────────────────────────
   // Effect 3: Gráfico de Amamentação — linha diária (últimos 30 dias ou filtro)
@@ -545,10 +590,26 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     if (studentId) attFaltas = attFaltas.filter(o => o.studentId === studentId);
 
     // Agrupar por aluno (usando attendanceList como base pois tem status F/FJ)
-    const studentMap = {}; // id -> { name, justified: 0, unjustified: 0 }
+    const studentMap = {}; // id -> { name, classroom, justified: 0, unjustified: 0, records: [] }
     attFaltas.forEach(o => {
       if (!o.studentId || !o.studentName) return;
-      if (!studentMap[o.studentId]) studentMap[o.studentId] = { name: o.studentName, justified: 0, unjustified: 0 };
+      if (!studentMap[o.studentId]) {
+        studentMap[o.studentId] = { 
+          id: o.studentId, 
+          name: o.studentName, 
+          classroom: o.classroom || 'Alegria', 
+          justified: 0, 
+          unjustified: 0, 
+          records: [] 
+        };
+      }
+      studentMap[o.studentId].records.push({
+        date: o.date,
+        justified: o.status === 'FJ' ? 'sim' : 'nao',
+        motive: o.status === 'FJ' ? 'Falta justificada na chamada' : 'Falta lançada na chamada',
+        classroom: o.classroom || 'Alegria',
+        type: 'chamada'
+      });
       if (o.status === 'FJ') studentMap[o.studentId].justified++;
       else studentMap[o.studentId].unjustified++;
     });
@@ -556,24 +617,66 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     // Complementar com faltas do caderno SEAMI (type=falta)
     faltasAno.forEach(o => {
       if (!o.studentId || !o.studentName) return;
-      if (!studentMap[o.studentId]) studentMap[o.studentId] = { name: o.studentName, justified: 0, unjustified: 0 };
+      if (!studentMap[o.studentId]) {
+        studentMap[o.studentId] = { 
+          id: o.studentId, 
+          name: o.studentName, 
+          classroom: o.classroom || 'Alegria', 
+          justified: 0, 
+          unjustified: 0, 
+          records: [] 
+        };
+      }
       // Evitar dupla contagem se já veio da chamada
-      // Usamos apenas as faltas do caderno que não se sobrepõem aos registros de chamada
+      const alreadyHas = studentMap[o.studentId].records.some(r => r.date === o.date);
+      if (!alreadyHas) {
+        studentMap[o.studentId].records.push({
+          date: o.date,
+          justified: o.justified, // 'sim' | 'nao'
+          motive: o.motive || 'Sem justificativa declarada',
+          classroom: o.classroom || 'Alegria',
+          type: 'caderno'
+        });
+        if (o.justified === 'sim') studentMap[o.studentId].justified++;
+        else studentMap[o.studentId].unjustified++;
+      }
     });
 
     // Se não há dados da chamada, usar as faltas do caderno SEAMI
     if (Object.keys(studentMap).length === 0) {
       faltasAno.forEach(o => {
         if (!o.studentId || !o.studentName) return;
-        if (!studentMap[o.studentId]) studentMap[o.studentId] = { name: o.studentName, justified: 0, unjustified: 0 };
+        if (!studentMap[o.studentId]) {
+          studentMap[o.studentId] = { 
+            id: o.studentId, 
+            name: o.studentName, 
+            classroom: o.classroom || 'Alegria', 
+            justified: 0, 
+            unjustified: 0, 
+            records: [] 
+          };
+        }
+        studentMap[o.studentId].records.push({
+          date: o.date,
+          justified: o.justified,
+          motive: o.motive || 'Sem justificativa declarada',
+          classroom: o.classroom || 'Alegria',
+          type: 'caderno'
+        });
         if (o.justified === 'sim') studentMap[o.studentId].justified++;
         else studentMap[o.studentId].unjustified++;
       });
     }
 
-    // Ordenar por total de faltas (desc), pegar top 15
+    // Ordenar por total ativo (desc), pegar top 15
     const sorted = Object.entries(studentMap)
-      .map(([id, v]) => ({ ...v, total: v.justified + v.unjustified }))
+      .map(([id, v]) => {
+        let activeTotal = 0;
+        if (showFaltasJustified) activeTotal += v.justified;
+        if (showFaltasUnjustified) activeTotal += v.unjustified;
+        return { ...v, id, total: activeTotal };
+      })
+      .filter(s => s.total > 0)
       .sort((a, b) => b.total - a.total)
       .slice(0, 15);
 
@@ -584,43 +687,55 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
 
     const ctx = chartRefs.faltasPorAluno.current;
     if (ctx) {
+      const datasets = [];
+      if (showFaltasJustified) {
+        datasets.push({
+          label: 'Faltas Justificadas',
+          data: sorted.length > 0 ? sorted.map(s => s.justified) : [0],
+          backgroundColor: 'rgba(59, 130, 246, 0.82)',
+          borderColor: '#3b82f6',
+          borderWidth: 1,
+          borderRadius: showFaltasUnjustified ? { topLeft: 0, topRight: 0, bottomLeft: 6, bottomRight: 6 } : 6,
+        });
+      }
+      if (showFaltasUnjustified) {
+        datasets.push({
+          label: 'Faltas Não Justificadas',
+          data: sorted.length > 0 ? sorted.map(s => s.unjustified) : [0],
+          backgroundColor: 'rgba(239, 68, 68, 0.82)',
+          borderColor: '#ef4444',
+          borderWidth: 1,
+          borderRadius: showFaltasJustified ? { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 } : 6,
+        });
+      }
+
       chartInstances.current.faltasPorAluno = new Chart(ctx, {
         type: 'bar',
         data: {
           labels: sorted.length > 0 ? sorted.map(s => s.name.split(' ').slice(0, 2).join(' ')) : ['Sem dados'],
-          datasets: [
-            {
-              label: 'Faltas Justificadas',
-              data: sorted.length > 0 ? sorted.map(s => s.justified) : [0],
-              backgroundColor: 'rgba(59, 130, 246, 0.82)',
-              borderColor: '#3b82f6',
-              borderWidth: 1,
-              borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 6, bottomRight: 6 },
-            },
-            {
-              label: 'Faltas Não Justificadas',
-              data: sorted.length > 0 ? sorted.map(s => s.unjustified) : [0],
-              backgroundColor: 'rgba(239, 68, 68, 0.82)',
-              borderColor: '#ef4444',
-              borderWidth: 1,
-              borderRadius: { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
-            },
-          ],
+          datasets: datasets.length > 0 ? datasets : [{ label: 'Sem dados selecionados', data: sorted.map(() => 0), backgroundColor: 'rgba(0,0,0,0.05)' }],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          onClick: (event, elements) => {
+            if (elements.length > 0) {
+              const elementIndex = elements[0].index;
+              const student = sorted[elementIndex];
+              if (student) {
+                setSelectedStudentDetails({
+                  id: student.id,
+                  name: student.name,
+                  classroom: student.classroom,
+                  chartType: 'falta',
+                  records: student.records || []
+                });
+              }
+            }
+          },
           plugins: {
             legend: {
-              display: true,
-              position: 'top',
-              labels: {
-                color: fontColor,
-                font: { family: 'Inter', size: 11, weight: 600 },
-                padding: 16,
-                usePointStyle: true,
-                pointStyleWidth: 12,
-              },
+              display: false,
             },
             tooltip: {
               callbacks: {
@@ -631,7 +746,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                   if (!s) return [];
                   const lines = [
                     '',
-                    `📊 Total de faltas: ${s.total}`,
+                    `📊 Total exibido:    ${s.total}`,
                     `✅ Justificadas:    ${s.justified}`,
                     `❌ Não Justificadas: ${s.unjustified}`,
                   ];
@@ -668,7 +783,25 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
         chartInstances.current.faltasPorAluno = null;
       }
     };
-  }, [occurrences, attendanceList, filters, isDark]);
+  }, [occurrences, attendanceList, filters, isDark, showFaltasJustified, showFaltasUnjustified]);
+
+  // Auxiliar para filtrar os registros a serem mostrados na modal
+  const getFilteredRecords = (details) => {
+    if (!details) return [];
+    if (details.chartType === 'falta') {
+      return details.records.filter(r => {
+        if (r.justified === 'sim' && showFaltasJustified) return true;
+        if (r.justified !== 'sim' && showFaltasUnjustified) return true;
+        return false;
+      });
+    } else {
+      return details.records.filter(r => {
+        if (r.justified === 'sim' && showAtrasosJustified) return true;
+        if (r.justified !== 'sim' && showAtrasosUnjustified) return true;
+        return false;
+      });
+    }
+  };
 
   // ──────────────────────────────────────────────────────────────────────────
   // Render
@@ -715,15 +848,49 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                 </span>
               </div>
               <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#1e3a8a', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe' }}>
+                <button 
+                  onClick={() => setShowFaltasJustified(!showFaltasJustified)}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '5px', 
+                    fontSize: '11px', 
+                    color: '#1e3a8a', 
+                    fontWeight: 600, 
+                    padding: '5px 12px', 
+                    borderRadius: '20px', 
+                    backgroundColor: showFaltasJustified ? '#eff6ff' : 'var(--slate-100)', 
+                    border: showFaltasJustified ? '1px solid #3b82f6' : '1px solid transparent',
+                    opacity: showFaltasJustified ? 1 : 0.5,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
                   <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#3b82f6', display: 'inline-block' }}></span>
                   Justificadas
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#991b1b', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#fef2f2', border: '1px solid #fca5a5' }}>
+                </button>
+                <button 
+                  onClick={() => setShowFaltasUnjustified(!showFaltasUnjustified)}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '5px', 
+                    fontSize: '11px', 
+                    color: '#991b1b', 
+                    fontWeight: 600, 
+                    padding: '5px 12px', 
+                    borderRadius: '20px', 
+                    backgroundColor: showFaltasUnjustified ? '#fef2f2' : 'var(--slate-100)', 
+                    border: showFaltasUnjustified ? '1px solid #ef4444' : '1px solid transparent',
+                    opacity: showFaltasUnjustified ? 1 : 0.5,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
                   <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#ef4444', display: 'inline-block' }}></span>
                   Não Justificadas
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#4338ca', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#eef2ff', border: '1px solid #a5b4fc' }}>
+                </button>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#4338ca', fontWeight: 600, padding: '5px 12px', borderRadius: '20px', backgroundColor: '#eef2ff', border: '1px solid #a5b4fc' }}>
                   ⚠️ Limite: 10 faltas não justificadas/ano
                 </span>
               </div>
@@ -745,14 +912,48 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                 </span>
               </div>
               <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#065f46', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                <button 
+                  onClick={() => setShowAtrasosJustified(!showAtrasosJustified)}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '5px', 
+                    fontSize: '11px', 
+                    color: '#065f46', 
+                    fontWeight: 600, 
+                    padding: '5px 12px', 
+                    borderRadius: '20px', 
+                    backgroundColor: showAtrasosJustified ? '#ecfdf5' : 'var(--slate-100)', 
+                    border: showAtrasosJustified ? '1px solid #10b981' : '1px solid transparent',
+                    opacity: showAtrasosJustified ? 1 : 0.5,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
                   <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#10b981', display: 'inline-block' }}></span>
                   Justificados
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#92400e', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', backgroundColor: '#fffbeb', border: '1px solid #fcd34d' }}>
+                </button>
+                <button 
+                  onClick={() => setShowAtrasosUnjustified(!showAtrasosUnjustified)}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '5px', 
+                    fontSize: '11px', 
+                    color: '#92400e', 
+                    fontWeight: 600, 
+                    padding: '5px 12px', 
+                    borderRadius: '20px', 
+                    backgroundColor: showAtrasosUnjustified ? '#fffbeb' : 'var(--slate-100)', 
+                    border: showAtrasosUnjustified ? '1px solid #f59e0b' : '1px solid transparent',
+                    opacity: showAtrasosUnjustified ? 1 : 0.5,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
                   <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#f59e0b', display: 'inline-block' }}></span>
                   Não Justificados
-                </span>
+                </button>
               </div>
             </div>
             <div className="chart-container-large">
@@ -856,6 +1057,121 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
 
         </div>
       </div>
+
+      {/* MODAL DE DETALHES DE FALTAS/ATRASOS DO ALUNO */}
+      {selectedStudentDetails && (() => {
+        const filteredRecords = getFilteredRecords(selectedStudentDetails);
+        const isFalta = selectedStudentDetails.chartType === 'falta';
+        return (
+          <div className="modal-overlay active" onClick={() => setSelectedStudentDetails(null)} style={{ zIndex: 1000 }}>
+            <div className="modal-card" style={{ maxWidth: '600px', width: '95%', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header" style={{ borderBottom: '1px solid var(--slate-100)', padding: '16px 24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '26px' }}>{isFalta ? '📅' : '⏰'}</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: 'var(--slate-800)', fontFamily: 'Outfit, sans-serif' }}>
+                      Detalhamento de {isFalta ? 'Faltas' : 'Atrasos'}
+                    </h2>
+                    <span style={{ fontSize: '12px', color: 'var(--slate-500)' }}>
+                      Estudante: <strong>{selectedStudentDetails.name}</strong> &middot; Sala {selectedStudentDetails.classroom}
+                    </span>
+                  </div>
+                </div>
+                <button className="modal-close-btn" onClick={() => setSelectedStudentDetails(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--slate-400)' }}>✕</button>
+              </div>
+              
+              <div className="form-body" style={{ maxHeight: '55vh', overflowY: 'auto', padding: '20px 24px' }}>
+                <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--slate-700)' }}>
+                    Registros no Ano ({filteredRecords.length})
+                  </span>
+                </div>
+                
+                {filteredRecords.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--slate-400)', fontSize: '13px' }}>
+                    Nenhum registro correspondente ao filtro ativo.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {filteredRecords
+                      .sort((a, b) => b.date.localeCompare(a.date))
+                      .map((record, index) => {
+                        const dateBR = record.date.split('-').reverse().join('/');
+                        const isJustified = record.justified === 'sim';
+                        return (
+                          <div 
+                            key={index} 
+                            style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'space-between', 
+                              padding: '12px 16px', 
+                              backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#f8fafc', 
+                              borderRadius: '12px', 
+                              border: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : '#e2e8f0'}`,
+                              gap: '12px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, flex: 1 }}>
+                              <span style={{ fontWeight: '700', fontSize: '13.5px', color: 'var(--slate-800)' }}>
+                                {dateBR}
+                              </span>
+                              <span style={{ fontSize: '12px', color: 'var(--slate-500)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <strong>Motivo:</strong> {record.motive}
+                              </span>
+                              <span style={{ fontSize: '10px', color: 'var(--slate-400)', textTransform: 'capitalize' }}>
+                                Origem: {record.type === 'chamada' ? 'Chamada de Classe' : record.type === 'caderno' ? 'Caderno SEAMI' : 'Atraso Caderno'}
+                              </span>
+                            </div>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                              <span style={{ 
+                                fontSize: '10px', 
+                                fontWeight: '700', 
+                                padding: '3px 8px', 
+                                borderRadius: '6px', 
+                                color: isJustified ? '#047857' : '#991b1b',
+                                backgroundColor: isJustified ? '#ecfdf5' : '#fef2f2',
+                                border: `1px solid ${isJustified ? '#a7f3d0' : '#fca5a5'}`
+                              }}>
+                                {isJustified ? 'Justificado' : 'Não Justif.'}
+                              </span>
+                              <button 
+                                onClick={() => {
+                                  setSelectedStudentDetails(null);
+                                  navigate(`/chamada?date=${record.date}&classroom=${record.classroom}`, { state: { date: record.date, classroom: record.classroom } });
+                                }}
+                                className="primary-btn" 
+                                style={{ 
+                                  padding: '6px 12px', 
+                                  fontSize: '11px', 
+                                  borderRadius: '8px',
+                                  backgroundColor: 'var(--brand-primary)',
+                                  color: 'white',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  fontWeight: 600,
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                Ir para Chamada
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+              
+              <div className="modal-footer" style={{ borderTop: '1px solid var(--slate-100)', padding: '16px 24px' }}>
+                <button className="secondary-btn" onClick={() => setSelectedStudentDetails(null)} style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '8px' }}>Fechar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }

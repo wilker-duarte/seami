@@ -480,15 +480,33 @@ export async function saveStudentBulk(studentsArray) {
 // ==========================================
 
 export async function getOccurrences() {
-  const { data, error } = await supabase
-    .from('occurrences')
-    .select('id, type, student_id, turma_id, studentname, classroom, date, time, motive, guardian, staff, obs, justified, notified, hasReturn, returnTime, timeIn, timeOut, startDate, days, endDate, cid, filePreview, signature, recordedBy, attachmentName, attachmentType, quantity')
-    .order('date', { ascending: false });
-  if (error) {
-    console.error('[Supabase] Erro ao obter ocorrências:', error.message);
-    throw error;
+  let allData = [];
+  let from = 0;
+  const pageSize = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('occurrences')
+      .select('id, type, student_id, turma_id, studentname, classroom, date, time, motive, guardian, staff, obs, justified, notified, hasReturn, returnTime, timeIn, timeOut, startDate, days, endDate, cid, filePreview, signature, recordedBy, attachmentName, attachmentType, quantity')
+      .order('date', { ascending: false })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.error('[Supabase] Erro ao obter ocorrências:', error.message);
+      throw error;
+    }
+
+    allData = allData.concat(data);
+
+    if (data.length < pageSize) {
+      hasMore = false;
+    } else {
+      from += pageSize;
+    }
   }
-  return data.map(o => ({
+
+  return allData.map(o => ({
     ...o,
     studentId: o.student_id,
     studentName: o.studentname || o.studentName || '',  // normaliza nome da coluna
@@ -621,28 +639,51 @@ export async function deleteOccurrence(id) {
 // ==========================================
 
 export async function getAttendance(filters = {}) {
-  let query = supabase.from('attendance').select('*');
-  
-  if (filters.classroom && filters.classroom !== 'all') {
-    const tId = classesIdMap[filters.classroom] || filters.classroom;
-    query = query.eq('turma_id', tId);
+  let allData = [];
+  let from = 0;
+  const pageSize = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    let query = supabase.from('attendance').select('*');
+    
+    if (filters.classroom && filters.classroom !== 'all') {
+      const tId = classesIdMap[filters.classroom] || filters.classroom;
+      query = query.eq('turma_id', tId);
+    }
+    if (filters.date) {
+      query = query.eq('date', filters.date);
+    }
+    if (filters.startDate) {
+      query = query.gte('date', filters.startDate);
+    }
+    if (filters.endDate) {
+      query = query.lte('date', filters.endDate);
+    }
+    
+    query = query.range(from, from + pageSize - 1);
+    
+    const { data, error } = await query;
+    if (error) {
+      console.error('[Supabase] Erro ao buscar chamada:', error.message);
+      throw error;
+    }
+    
+    allData = allData.concat(data);
+    
+    if (data.length < pageSize) {
+      hasMore = false;
+    } else {
+      from += pageSize;
+    }
+    
+    if (filters.limit && allData.length >= filters.limit) {
+      allData = allData.slice(0, filters.limit);
+      hasMore = false;
+    }
   }
-  if (filters.date) {
-    query = query.eq('date', filters.date);
-  }
-  if (filters.startDate) {
-    query = query.gte('date', filters.startDate);
-  }
-  if (filters.endDate) {
-    query = query.lte('date', filters.endDate);
-  }
-  
-  const { data, error } = await query;
-  if (error) {
-    console.error('[Supabase] Erro ao buscar chamada:', error.message);
-    throw error;
-  }
-  return data.map(a => ({
+
+  return allData.map(a => ({
     ...a,
     studentId: a.student_id,
     studentName: a.studentname || a.studentName || '',
