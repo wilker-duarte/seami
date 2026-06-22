@@ -321,13 +321,16 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     atrasosAno.forEach(o => {
       if (!o.studentId || !o.studentName) return;
       if (!studentMap[o.studentId]) {
+        const studentInfo = (students || []).find(s => s.id === o.studentId);
         studentMap[o.studentId] = { 
           id: o.studentId, 
           name: o.studentName, 
           classroom: o.classroom || 'Alegria', 
           justified: 0, 
           unjustified: 0, 
-          records: [] 
+          records: [],
+          has_acompanhamento: studentInfo?.has_acompanhamento || false,
+          acompanhamento_obs: studentInfo?.acompanhamento_obs || ''
         };
       }
       studentMap[o.studentId].records.push({
@@ -385,7 +388,10 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
       chartInstances.current.atrasosPorAluno = new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: sorted.length > 0 ? sorted.map(s => s.name.split(' ').slice(0, 2).join(' ')) : ['Sem dados'],
+          labels: sorted.length > 0 ? sorted.map(s => {
+            const shortName = s.name.split(' ').slice(0, 2).join(' ');
+            return s.has_acompanhamento ? `${shortName} 🩺` : shortName;
+          }) : ['Sem dados'],
           datasets: datasets.length > 0 ? datasets : [{ label: 'Sem dados selecionados', data: sorted.map(() => 0), backgroundColor: 'rgba(0,0,0,0.05)' }],
         },
         options: {
@@ -401,7 +407,9 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                   name: student.name,
                   classroom: student.classroom,
                   chartType: 'atraso',
-                  records: student.records || []
+                  records: student.records || [],
+                  has_acompanhamento: student.has_acompanhamento || false,
+                  acompanhamento_obs: student.acompanhamento_obs || ''
                 });
               }
             }
@@ -412,7 +420,11 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
             },
             tooltip: {
               callbacks: {
-                title: (items) => sorted[items[0].dataIndex]?.name ?? '',
+                title: (items) => {
+                  const s = sorted[items[0].dataIndex];
+                  if (!s) return '';
+                  return s.has_acompanhamento ? `${s.name} (🩺 Acomp.)` : s.name;
+                },
                 afterBody: (items) => {
                   const idx = items[0].dataIndex;
                   const s = sorted[idx];
@@ -423,6 +435,9 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                     `✅ Justificados:     ${s.justified}`,
                     `❌ Não Justificados: ${s.unjustified}`,
                   ];
+                  if (s.has_acompanhamento) {
+                    lines.push('', `🩺 Acompanhamento: ${s.acompanhamento_obs || 'Sim'}`);
+                  }
                   return lines;
                 },
               },
@@ -451,7 +466,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
         chartInstances.current.atrasosPorAluno = null;
       }
     };
-  }, [occurrences, filters, isDark, showAtrasosJustified, showAtrasosUnjustified]);
+  }, [occurrences, filters, isDark, showAtrasosJustified, showAtrasosUnjustified, students]);
 
   // ──────────────────────────────────────────────────────────────────────────
   // Effect 3: Gráfico de Amamentação — linha diária (últimos 30 dias ou filtro)
@@ -594,13 +609,16 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     attFaltas.forEach(o => {
       if (!o.studentId || !o.studentName) return;
       if (!studentMap[o.studentId]) {
+        const studentInfo = (students || []).find(s => s.id === o.studentId);
         studentMap[o.studentId] = { 
           id: o.studentId, 
           name: o.studentName, 
           classroom: o.classroom || 'Alegria', 
           justified: 0, 
           unjustified: 0, 
-          records: [] 
+          records: [],
+          has_acompanhamento: studentInfo?.has_acompanhamento || false,
+          acompanhamento_obs: studentInfo?.acompanhamento_obs || ''
         };
       }
       studentMap[o.studentId].records.push({
@@ -618,13 +636,16 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     faltasAno.forEach(o => {
       if (!o.studentId || !o.studentName) return;
       if (!studentMap[o.studentId]) {
+        const studentInfo = (students || []).find(s => s.id === o.studentId);
         studentMap[o.studentId] = { 
           id: o.studentId, 
           name: o.studentName, 
           classroom: o.classroom || 'Alegria', 
           justified: 0, 
           unjustified: 0, 
-          records: [] 
+          records: [],
+          has_acompanhamento: studentInfo?.has_acompanhamento || false,
+          acompanhamento_obs: studentInfo?.acompanhamento_obs || ''
         };
       }
       // Evitar dupla contagem se já veio da chamada
@@ -647,13 +668,16 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
       faltasAno.forEach(o => {
         if (!o.studentId || !o.studentName) return;
         if (!studentMap[o.studentId]) {
+          const studentInfo = (students || []).find(s => s.id === o.studentId);
           studentMap[o.studentId] = { 
             id: o.studentId, 
             name: o.studentName, 
             classroom: o.classroom || 'Alegria', 
             justified: 0, 
             unjustified: 0, 
-            records: [] 
+            records: [],
+            has_acompanhamento: studentInfo?.has_acompanhamento || false,
+            acompanhamento_obs: studentInfo?.acompanhamento_obs || ''
           };
         }
         studentMap[o.studentId].records.push({
@@ -728,7 +752,9 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                   name: student.name,
                   classroom: student.classroom,
                   chartType: 'falta',
-                  records: student.records || []
+                  records: student.records || [],
+                  has_acompanhamento: student.has_acompanhamento || false,
+                  acompanhamento_obs: student.acompanhamento_obs || ''
                 });
               }
             }
@@ -739,7 +765,11 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
             },
             tooltip: {
               callbacks: {
-                title: (items) => sorted[items[0].dataIndex]?.name ?? '',
+                title: (items) => {
+                  const s = sorted[items[0].dataIndex];
+                  if (!s) return '';
+                  return s.has_acompanhamento ? `${s.name} (🩺 Acomp.)` : s.name;
+                },
                 afterBody: (items) => {
                   const idx = items[0].dataIndex;
                   const s = sorted[idx];
@@ -750,6 +780,9 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                     `✅ Justificadas:    ${s.justified}`,
                     `❌ Não Justificadas: ${s.unjustified}`,
                   ];
+                  if (s.has_acompanhamento) {
+                    lines.push('', `🩺 Acompanhamento: ${s.acompanhamento_obs || 'Sim'}`);
+                  }
                   if (s.unjustified >= 10) lines.push('', '⚠️  Limite de 10 faltas não justificadas atingido!');
                   return lines;
                 },
@@ -783,7 +816,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
         chartInstances.current.faltasPorAluno = null;
       }
     };
-  }, [occurrences, attendanceList, filters, isDark, showFaltasJustified, showFaltasUnjustified]);
+  }, [occurrences, attendanceList, filters, isDark, showFaltasJustified, showFaltasUnjustified, students]);
 
   // Auxiliar para filtrar os registros a serem mostrados na modal
   const getFilteredRecords = (details) => {
@@ -1081,6 +1114,28 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
               </div>
               
               <div className="form-body" style={{ maxHeight: '55vh', overflowY: 'auto', padding: '20px 24px' }}>
+                {selectedStudentDetails.has_acompanhamento && (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'flex-start', 
+                    gap: '10px', 
+                    padding: '12px 16px', 
+                    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff', 
+                    border: '1px solid rgba(59, 130, 246, 0.3)', 
+                    borderRadius: '12px', 
+                    marginBottom: '16px',
+                    color: isDark ? '#93c5fd' : '#1e40af',
+                    fontSize: '13px',
+                    lineHeight: '1.5'
+                  }}>
+                    <span style={{ fontSize: '18px', flexShrink: 0 }}>🩺</span>
+                    <div style={{ textAlign: 'left' }}>
+                      <strong style={{ display: 'block', marginBottom: '2px', color: isDark ? '#60a5fa' : '#1d4ed8' }}>Acompanhamento Ativo</strong>
+                      <span>{selectedStudentDetails.acompanhamento_obs || 'Este aluno possui acompanhamento/atraso justificado registrado.'}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--slate-700)' }}>
                     Registros no Ano ({filteredRecords.length})

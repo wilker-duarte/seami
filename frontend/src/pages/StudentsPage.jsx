@@ -22,7 +22,7 @@ export default function StudentsPage() {
   const [sortDirection, setSortDirection] = useState('asc'); // 'asc' | 'desc'
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
-  const [form, setForm] = useState({ name: '', classroom: '', active: 'active', shift: 'integral', entry_date: new Date().toISOString().split('T')[0], deactivation_date: new Date().toISOString().split('T')[0] });
+  const [form, setForm] = useState({ name: '', classroom: '', active: 'active', shift: 'integral', entry_date: new Date().toISOString().split('T')[0], deactivation_date: new Date().toISOString().split('T')[0], has_acompanhamento: false, acompanhamento_obs: '', acompanhamento_dias: [] });
   const [deactivatingStudent, setDeactivatingStudent] = useState(null);
   const [deactivationDateInput, setDeactivationDateInput] = useState(new Date().toISOString().split('T')[0]);
 
@@ -35,10 +35,13 @@ export default function StudentsPage() {
         active: student.active ? 'active' : 'inactive',
         shift: student.shift || 'integral',
         entry_date: student.entry_date || new Date().toISOString().split('T')[0],
-        deactivation_date: student.deactivation_date || new Date().toISOString().split('T')[0]
+        deactivation_date: student.deactivation_date || new Date().toISOString().split('T')[0],
+        has_acompanhamento: student.has_acompanhamento || false,
+        acompanhamento_obs: student.acompanhamento_obs || '',
+        acompanhamento_dias: student.acompanhamento_dias || []
       });
     } else {
-      setForm({ name: '', classroom: '', active: 'active', shift: 'integral', entry_date: new Date().toISOString().split('T')[0], deactivation_date: new Date().toISOString().split('T')[0] });
+      setForm({ name: '', classroom: '', active: 'active', shift: 'integral', entry_date: new Date().toISOString().split('T')[0], deactivation_date: new Date().toISOString().split('T')[0], has_acompanhamento: false, acompanhamento_obs: '', acompanhamento_dias: [] });
     }
     setIsModalOpen(true);
   };
@@ -57,7 +60,10 @@ export default function StudentsPage() {
         active: form.active === 'active',
         shift: form.shift || 'integral',
         entry_date: form.entry_date,
-        deactivation_date: form.active === 'active' ? null : form.deactivation_date
+        deactivation_date: form.active === 'active' ? null : form.deactivation_date,
+        has_acompanhamento: form.has_acompanhamento,
+        acompanhamento_obs: form.has_acompanhamento ? form.acompanhamento_obs.trim() : '',
+        acompanhamento_dias: form.has_acompanhamento ? form.acompanhamento_dias : []
       };
       
       const saved = await saveStudent(payload);
@@ -247,6 +253,11 @@ export default function StudentsPage() {
                             Entrada: {st.entry_date ? formatDateBR(st.entry_date) : 'Não informada'}
                             {!st.active && st.deactivation_date && ` • Desativação: ${formatDateBR(st.deactivation_date)}`}
                           </span>
+                          {st.has_acompanhamento && (
+                            <span style={{ fontSize: '11.5px', color: '#0369a1', fontWeight: 600, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '3px', flexWrap: 'wrap' }}>
+                              🩺 Acomp.: {st.acompanhamento_obs} {st.acompanhamento_dias && st.acompanhamento_dias.length > 0 && `(${st.acompanhamento_dias.map(d => ({ seg: 'Seg', ter: 'Ter', qua: 'Qua', qui: 'Qui', sex: 'Sex' }[d])).join(', ')})`}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -341,6 +352,90 @@ export default function StudentsPage() {
                     onChange={(e) => setForm(f => ({ ...f, entry_date: e.target.value }))}
                   />
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '12px 0 12px 0' }}>
+                  <input
+                    type="checkbox"
+                    id="has_acompanhamento"
+                    checked={form.has_acompanhamento}
+                    onChange={(e) => setForm(f => ({ ...f, has_acompanhamento: e.target.checked, acompanhamento_dias: e.target.checked ? f.acompanhamento_dias || [] : [] }))}
+                    style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                  />
+                  <label htmlFor="has_acompanhamento" style={{ fontWeight: 600, fontSize: '13px', color: 'var(--slate-700)', cursor: 'pointer', userSelect: 'none' }}>
+                    Possui acompanhamento (psicólogo, fono ou justificativa de atraso)
+                  </label>
+                </div>
+                {form.has_acompanhamento && (
+                  <>
+                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '12.5px', color: 'var(--slate-600)' }}>
+                        Dias da semana programados para o acompanhamento/atraso:*
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {['seg', 'ter', 'qua', 'qui', 'sex'].map(day => {
+                          const isSelected = form.acompanhamento_dias?.includes(day);
+                          const dayLabels = { seg: 'Segunda', ter: 'Terça', qua: 'Quarta', qui: 'Quinta', sex: 'Sexta' };
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              onClick={() => {
+                                const current = form.acompanhamento_dias || [];
+                                const updated = current.includes(day)
+                                  ? current.filter(d => d !== day)
+                                  : [...current, day];
+                                setForm(f => ({ ...f, acompanhamento_dias: updated }));
+                              }}
+                              style={{
+                                padding: '5px 12px',
+                                borderRadius: '20px',
+                                fontSize: '11.5px',
+                                fontWeight: 600,
+                                border: isSelected ? '1px solid var(--brand-primary)' : '1px solid var(--slate-200)',
+                                backgroundColor: isSelected ? '#f5f3ff' : 'white',
+                                color: isSelected ? 'var(--brand-primary)' : 'var(--slate-500)',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              {dayLabels[day]}
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allDays = ['seg', 'ter', 'qua', 'qui', 'sex'];
+                            const isAllSelected = form.acompanhamento_dias?.length === 5;
+                            setForm(f => ({ ...f, acompanhamento_dias: isAllSelected ? [] : allDays }));
+                          }}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '20px',
+                            fontSize: '11.5px',
+                            fontWeight: 600,
+                            border: '1px dashed var(--slate-300)',
+                            backgroundColor: 'transparent',
+                            color: 'var(--slate-500)',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {form.acompanhamento_dias?.length === 5 ? 'Limpar Todos' : 'Todos os Dias'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Orientação / Observação do Acompanhamento*</label>
+                      <textarea
+                        required
+                        placeholder="Ex: Chega atrasado segundas e quartas por fazer fonoaudiólogo às 08h."
+                        value={form.acompanhamento_obs}
+                        onChange={(e) => setForm(f => ({ ...f, acompanhamento_obs: e.target.value }))}
+                        rows={2}
+                        style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--slate-200)', resize: 'vertical' }}
+                      />
+                    </div>
+                  </>
+                )}
                 {editingStudent && (
                   <div className="form-group">
                     <label>Status do Aluno</label>

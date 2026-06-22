@@ -51,7 +51,10 @@ export default function SettingsPage({
     description: '',
     email: '',
     turma_id: '',
-    shift: 'integral' // 'matutino' | 'vespertino' | 'integral'
+    shift: 'integral', // 'matutino' | 'vespertino' | 'integral'
+    has_acompanhamento: false,
+    acompanhamento_obs: '',
+    acompanhamento_dias: []
   });
 
   // Carrega todas as pessoas do banco de dados na inicialização
@@ -145,6 +148,19 @@ export default function SettingsPage({
   const handleOpenPessoaModal = (pessoa = null) => {
     setEditingPessoa(pessoa);
     if (pessoa) {
+      const isStudent = pessoa.type === 'aluno';
+      let hasAcompanhamento = false;
+      let acompanhamentoObs = '';
+      let acompanhamentoDias = [];
+      if (isStudent && pessoa.description) {
+        try {
+          const parsed = JSON.parse(pessoa.description);
+          hasAcompanhamento = parsed.has_acompanhamento || false;
+          acompanhamentoObs = parsed.acompanhamento_obs || '';
+          acompanhamentoDias = parsed.acompanhamento_dias || [];
+        } catch (e) {}
+      }
+
       setPessoaForm({
         name: pessoa.name,
         type: pessoa.type,
@@ -153,7 +169,10 @@ export default function SettingsPage({
         description: pessoa.description || '',
         email: pessoa.email || '',
         turma_id: pessoa.turma_id || '',
-        shift: pessoa.shift || 'integral'
+        shift: pessoa.shift || 'integral',
+        has_acompanhamento: hasAcompanhamento,
+        acompanhamento_obs: acompanhamentoObs,
+        acompanhamento_dias: acompanhamentoDias
       });
     } else {
       setPessoaForm({
@@ -164,7 +183,10 @@ export default function SettingsPage({
         description: '',
         email: '',
         turma_id: turmasList[0]?.id || '',
-        shift: 'integral'
+        shift: 'integral',
+        has_acompanhamento: false,
+        acompanhamento_obs: '',
+        acompanhamento_dias: []
       });
     }
     setIsPessoaModalOpen(true);
@@ -188,7 +210,10 @@ export default function SettingsPage({
           name: pessoaForm.name.trim(),
           active: pessoaForm.active,
           turma_id: pessoaForm.turma_id || turmasList[0]?.id || '1',
-          shift: pessoaForm.shift
+          shift: pessoaForm.shift,
+          has_acompanhamento: pessoaForm.has_acompanhamento,
+          acompanhamento_obs: pessoaForm.has_acompanhamento ? pessoaForm.acompanhamento_obs.trim() : '',
+          acompanhamento_dias: pessoaForm.has_acompanhamento ? pessoaForm.acompanhamento_dias : []
         };
         await saveStudent(payload);
       } else {
@@ -492,16 +517,34 @@ export default function SettingsPage({
                               </span>
                             </td>
                             <td style={{ fontSize: '12.5px', color: 'var(--slate-600)' }}>
-                              {isStudent ? (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 12px' }}>
-                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ color: 'var(--slate-400)' }}>Sala:</span> <strong>{turma ? turma.name : 'Sem sala'}</strong>
-                                  </span>
-                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ color: 'var(--slate-400)' }}>Turno:</span> <strong style={{ textTransform: 'capitalize' }}>{pessoa.shift || 'Integral'}</strong>
-                                  </span>
-                                </div>
-                              ) : (
+                              {isStudent ? (() => {
+                                let hasAcompanhamento = false;
+                                let acompanhamentoObs = '';
+                                if (pessoa.description) {
+                                  try {
+                                    const parsed = JSON.parse(pessoa.description);
+                                    hasAcompanhamento = parsed.has_acompanhamento || false;
+                                    acompanhamentoObs = parsed.acompanhamento_obs || '';
+                                  } catch (e) {}
+                                }
+                                return (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 12px' }}>
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ color: 'var(--slate-400)' }}>Sala:</span> <strong>{turma ? turma.name : 'Sem sala'}</strong>
+                                      </span>
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ color: 'var(--slate-400)' }}>Turno:</span> <strong style={{ textTransform: 'capitalize' }}>{pessoa.shift || 'Integral'}</strong>
+                                      </span>
+                                    </div>
+                                    {hasAcompanhamento && (
+                                      <span style={{ fontSize: '11px', color: '#0369a1', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px', flexWrap: 'wrap' }}>
+                                        🩺 Acomp.: {acompanhamentoObs} {acompanhamentoDias && acompanhamentoDias.length > 0 && `(${acompanhamentoDias.map(d => ({ seg: 'Seg', ter: 'Ter', qua: 'Qua', qui: 'Qui', sex: 'Sex' }[d])).join(', ')})`}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })() : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                   {pessoa.email && (
                                     <span style={{ wordBreak: 'break-all' }}>
@@ -698,6 +741,90 @@ export default function SettingsPage({
                             <option value="vespertino">Vespertino (Tarde)</option>
                           </select>
                         </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '12px 0 12px 0' }}>
+                          <input
+                            type="checkbox"
+                            id="pessoa_has_acompanhamento"
+                            checked={pessoaForm.has_acompanhamento}
+                            onChange={(e) => setPessoaForm(f => ({ ...f, has_acompanhamento: e.target.checked, acompanhamento_dias: e.target.checked ? f.acompanhamento_dias || [] : [] }))}
+                            style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
+                          />
+                          <label htmlFor="pessoa_has_acompanhamento" style={{ fontWeight: 600, fontSize: '13px', color: 'var(--slate-700)', cursor: 'pointer', userSelect: 'none' }}>
+                            Possui acompanhamento (psicólogo, fono ou justificativa de atraso)
+                          </label>
+                        </div>
+                        {pessoaForm.has_acompanhamento && (
+                          <>
+                            <div className="form-group" style={{ marginBottom: '12px' }}>
+                              <label style={{ display: 'block', marginBottom: '6px', fontSize: '12.5px', color: 'var(--slate-600)' }}>
+                                Dias da semana programados para o acompanhamento/atraso:*
+                              </label>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                {['seg', 'ter', 'qua', 'qui', 'sex'].map(day => {
+                                  const isSelected = pessoaForm.acompanhamento_dias?.includes(day);
+                                  const dayLabels = { seg: 'Segunda', ter: 'Terça', qua: 'Quarta', qui: 'Quinta', sex: 'Sexta' };
+                                  return (
+                                    <button
+                                      key={day}
+                                      type="button"
+                                      onClick={() => {
+                                        const current = pessoaForm.acompanhamento_dias || [];
+                                        const updated = current.includes(day)
+                                          ? current.filter(d => d !== day)
+                                          : [...current, day];
+                                        setPessoaForm(f => ({ ...f, acompanhamento_dias: updated }));
+                                      }}
+                                      style={{
+                                        padding: '5px 12px',
+                                        borderRadius: '20px',
+                                        fontSize: '11.5px',
+                                        fontWeight: 600,
+                                        border: isSelected ? '1px solid var(--brand-primary)' : '1px solid var(--slate-200)',
+                                        backgroundColor: isSelected ? '#f5f3ff' : 'white',
+                                        color: isSelected ? 'var(--brand-primary)' : 'var(--slate-500)',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                    >
+                                      {dayLabels[day]}
+                                    </button>
+                                  );
+                                })}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const allDays = ['seg', 'ter', 'qua', 'qui', 'sex'];
+                                    const isAllSelected = pessoaForm.acompanhamento_dias?.length === 5;
+                                    setPessoaForm(f => ({ ...f, acompanhamento_dias: isAllSelected ? [] : allDays }));
+                                  }}
+                                  style={{
+                                    padding: '5px 12px',
+                                    borderRadius: '20px',
+                                    fontSize: '11.5px',
+                                    fontWeight: 600,
+                                    border: '1px dashed var(--slate-300)',
+                                    backgroundColor: 'transparent',
+                                    color: 'var(--slate-500)',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  {pessoaForm.acompanhamento_dias?.length === 5 ? 'Limpar Todos' : 'Todos os Dias'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="form-group">
+                              <label>Orientação / Observação do Acompanhamento*</label>
+                              <textarea
+                                required
+                                placeholder="Ex: Chega atrasado segundas e quartas por fazer fonoaudiólogo às 08h."
+                                value={pessoaForm.acompanhamento_obs}
+                                onChange={(e) => setPessoaForm(f => ({ ...f, acompanhamento_obs: e.target.value }))}
+                                rows={2}
+                                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--slate-200)', resize: 'vertical' }}
+                              />
+                            </div>
+                          </>
+                        )}
                       </>
                     ) : (
                       /* DADOS DINÂMICOS SE FOR EQUIPE (FUNCIONÁRIO) */

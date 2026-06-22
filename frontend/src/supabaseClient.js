@@ -221,25 +221,34 @@ export async function getStudents() {
     .filter(a => a.id !== 'dummy_amamentacao')
     .map(a => {
       let entryDate = null;
-    let deactivationDate = null;
-    if (a.description) {
-      try {
-        const parsed = JSON.parse(a.description);
-        entryDate = parsed.entry_date || null;
-        deactivationDate = parsed.deactivation_date || null;
-      } catch (e) {
-        console.warn('Failed to parse description for student', a.id, e);
+      let deactivationDate = null;
+      let hasAcompanhamento = false;
+      let acompanhamentoObs = '';
+      let acompanhamentoDias = [];
+      if (a.description) {
+        try {
+          const parsed = JSON.parse(a.description);
+          entryDate = parsed.entry_date || null;
+          deactivationDate = parsed.deactivation_date || null;
+          hasAcompanhamento = parsed.has_acompanhamento || false;
+          acompanhamentoObs = parsed.acompanhamento_obs || '';
+          acompanhamentoDias = parsed.acompanhamento_dias || [];
+        } catch (e) {
+          console.warn('Failed to parse description for student', a.id, e);
+        }
       }
-    }
-    return {
-      ...a,
-      studentId: a.id, // Compatibilidade
-      classroom: classesNameMap[a.turma_id] || 'Alegria', // Compatibilidade visual
-      shift: a.shift || 'integral',
-      entry_date: entryDate,
-      deactivation_date: deactivationDate
-    };
-  });
+      return {
+        ...a,
+        studentId: a.id, // Compatibilidade
+        classroom: classesNameMap[a.turma_id] || 'Alegria', // Compatibilidade visual
+        shift: a.shift || 'integral',
+        entry_date: entryDate,
+        deactivation_date: deactivationDate,
+        has_acompanhamento: hasAcompanhamento,
+        acompanhamento_obs: acompanhamentoObs,
+        acompanhamento_dias: acompanhamentoDias
+      };
+    });
 }
 
 export async function saveStudent(student) {
@@ -247,6 +256,9 @@ export async function saveStudent(student) {
   
   let entryDate = student.entry_date || new Date().toISOString().split('T')[0];
   let deactivationDate = student.deactivation_date || null;
+  let hasAcompanhamento = student.has_acompanhamento ?? false;
+  let acompanhamentoObs = student.acompanhamento_obs || '';
+  let acompanhamentoDias = student.acompanhamento_dias || [];
 
   // Se for edição, vamos preservar as datas caso não tenham sido passadas no payload
   if (student.id) {
@@ -264,6 +276,15 @@ export async function saveStudent(student) {
         if (student.deactivation_date === undefined && parsed.deactivation_date) {
           deactivationDate = parsed.deactivation_date;
         }
+        if (student.has_acompanhamento === undefined && parsed.has_acompanhamento !== undefined) {
+          hasAcompanhamento = parsed.has_acompanhamento;
+        }
+        if (student.acompanhamento_obs === undefined && parsed.acompanhamento_obs !== undefined) {
+          acompanhamentoObs = parsed.acompanhamento_obs;
+        }
+        if (student.acompanhamento_dias === undefined && parsed.acompanhamento_dias !== undefined) {
+          acompanhamentoDias = parsed.acompanhamento_dias;
+        }
       }
     } catch (e) {
       console.warn('Failed to parse existing description in saveStudent', student.id, e);
@@ -279,7 +300,10 @@ export async function saveStudent(student) {
 
   const descriptionObj = {
     entry_date: entryDate,
-    deactivation_date: deactivationDate
+    deactivation_date: deactivationDate,
+    has_acompanhamento: hasAcompanhamento,
+    acompanhamento_obs: acompanhamentoObs,
+    acompanhamento_dias: acompanhamentoDias
   };
 
   const payload = {
@@ -306,11 +330,17 @@ export async function saveStudent(student) {
 
   let entryDateResult = null;
   let deactivationDateResult = null;
+  let hasAcompanhamentoResult = false;
+  let acompanhamentoObsResult = '';
+  let acompanhamentoDiasResult = [];
   if (data.description) {
     try {
       const parsed = JSON.parse(data.description);
       entryDateResult = parsed.entry_date || null;
       deactivationDateResult = parsed.deactivation_date || null;
+      hasAcompanhamentoResult = parsed.has_acompanhamento || false;
+      acompanhamentoObsResult = parsed.acompanhamento_obs || '';
+      acompanhamentoDiasResult = parsed.acompanhamento_dias || [];
     } catch (e) {
       console.warn('Failed to parse description for saved student', data.id, e);
     }
@@ -321,7 +351,10 @@ export async function saveStudent(student) {
     classroom: classesNameMap[data.turma_id] || 'Alegria',
     shift: data.shift || 'integral',
     entry_date: entryDateResult,
-    deactivation_date: deactivationDateResult
+    deactivation_date: deactivationDateResult,
+    has_acompanhamento: hasAcompanhamentoResult,
+    acompanhamento_obs: acompanhamentoObsResult,
+    acompanhamento_dias: acompanhamentoDiasResult
   };
 }
 
@@ -427,10 +460,16 @@ export async function saveStudentBulk(studentsArray) {
 
     const entryDate = s.entry_date || existingDescObj.entry_date || new Date().toISOString().split('T')[0];
     const deactivationDate = s.deactivation_date || existingDescObj.deactivation_date || (s.active === false ? new Date().toISOString().split('T')[0] : null);
+    const hasAcompanhamento = s.has_acompanhamento ?? existingDescObj.has_acompanhamento ?? false;
+    const acompanhamentoObs = s.acompanhamento_obs || existingDescObj.acompanhamento_obs || '';
+    const acompanhamentoDias = s.acompanhamento_dias || existingDescObj.acompanhamento_dias || [];
 
     const descriptionObj = {
       entry_date: entryDate,
-      deactivation_date: deactivationDate
+      deactivation_date: deactivationDate,
+      has_acompanhamento: hasAcompanhamento,
+      acompanhamento_obs: acompanhamentoObs,
+      acompanhamento_dias: acompanhamentoDias
     };
 
     return {
@@ -458,11 +497,17 @@ export async function saveStudentBulk(studentsArray) {
   return data.map(d => {
     let entryDate = null;
     let deactivationDate = null;
+    let hasAcompanhamento = false;
+    let acompanhamentoObs = '';
+    let acompanhamentoDias = [];
     if (d.description) {
       try {
         const parsed = JSON.parse(d.description);
         entryDate = parsed.entry_date || null;
         deactivationDate = parsed.deactivation_date || null;
+        hasAcompanhamento = parsed.has_acompanhamento || false;
+        acompanhamentoObs = parsed.acompanhamento_obs || '';
+        acompanhamentoDias = parsed.acompanhamento_dias || [];
       } catch (e) {}
     }
     return {
@@ -470,7 +515,10 @@ export async function saveStudentBulk(studentsArray) {
       classroom: classesNameMap[d.turma_id] || 'Alegria',
       shift: d.shift || 'integral',
       entry_date: entryDate,
-      deactivation_date: deactivationDate
+      deactivation_date: deactivationDate,
+      has_acompanhamento: hasAcompanhamento,
+      acompanhamento_obs: acompanhamentoObs,
+      acompanhamento_dias: acompanhamentoDias
     };
   });
 }

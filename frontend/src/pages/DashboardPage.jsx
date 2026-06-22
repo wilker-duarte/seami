@@ -368,15 +368,34 @@ export default function DashboardPage({ setActiveModule }) {
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .map((student, idx) => (
                         <div key={student.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--slate-50)', borderRadius: '10px', border: '1px solid var(--slate-100)' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                            <span style={{ fontSize: '18px' }}>👦</span>
-                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                              <span style={{ fontWeight: '700', fontSize: '13px', color: 'var(--slate-800)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {idx + 1}. {student.name}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                            <span style={{ fontSize: '18px', flexShrink: 0 }}>👦</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                              <span style={{ fontWeight: '700', fontSize: '13px', color: 'var(--slate-800)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                  {idx + 1}. {student.name}
+                                </span>
+                                {student.has_acompanhamento && <span title="Acompanhamento Ativo" style={{ flexShrink: 0 }}>🩺</span>}
                               </span>
                               <span style={{ fontSize: '11px', color: 'var(--slate-500)', textTransform: 'capitalize' }}>
                                 Turno: {student.shift || 'Integral'}
                               </span>
+                              {student.has_acompanhamento && (
+                                <span style={{ 
+                                  fontSize: '11px', 
+                                  color: '#1d4ed8', 
+                                  fontWeight: 500, 
+                                  marginTop: '2px',
+                                  backgroundColor: '#eff6ff',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #dbeafe',
+                                  wordBreak: 'break-word',
+                                  display: 'inline-block'
+                                }}>
+                                  <strong>Acomp:</strong> {student.acompanhamento_obs || 'Sim'}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <span style={{ 
@@ -386,7 +405,9 @@ export default function DashboardPage({ setActiveModule }) {
                             borderRadius: '4px', 
                             color: student.active ? '#15803d' : '#b91c1c',
                             backgroundColor: student.active ? '#f0fdf4' : '#fef2f2',
-                            border: student.active ? '1px solid #bbf7d0' : '1px solid #fecaca'
+                            border: student.active ? '1px solid #bbf7d0' : '1px solid #fecaca',
+                            marginLeft: '8px',
+                            flexShrink: 0
                           }}>
                             {student.active ? 'Ativo' : 'Inativo'}
                           </span>

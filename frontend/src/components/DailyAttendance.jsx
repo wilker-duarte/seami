@@ -23,6 +23,32 @@ import {
 } from 'lucide-react';
 import { getStudents, getAttendance, saveAttendanceBulk, getOccurrences } from '../supabaseClient';
 
+const isAcompanhamentoScheduledForDate = (student, dateStr) => {
+  if (!student || !student.has_acompanhamento) return false;
+  
+  // Se a lista de dias estiver vazia, por padrão consideramos todos os dias
+  if (!student.acompanhamento_dias || student.acompanhamento_dias.length === 0) {
+    return true;
+  }
+  
+  // Obter o dia da semana da data (0 = Domingo, 1 = Segunda, ..., 6 = Sábado)
+  const dateObj = new Date(dateStr + 'T12:00:00');
+  const dayOfWeekIndex = dateObj.getDay(); 
+  
+  const mapIndexToKey = {
+    1: 'seg',
+    2: 'ter',
+    3: 'qua',
+    4: 'qui',
+    5: 'sex'
+  };
+  
+  const currentDayKey = mapIndexToKey[dayOfWeekIndex];
+  if (!currentDayKey) return false; // Finais de semana não contam
+  
+  return student.acompanhamento_dias.includes(currentDayKey);
+};
+
 export default function DailyAttendance({ activeUser, initialTab, setActiveModule }) {
   const location = useLocation();
 
@@ -1264,24 +1290,44 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
                             </div>
                             <div>
                               <span style={{ fontWeight: 600, color: 'var(--slate-800)', display: 'block' }}>{student.name}</span>
-                              {absenceReasons[student.id] && (
-                                <span style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  fontSize: '10px',
-                                  fontWeight: 600,
-                                  color: absenceReasons[student.id].type === 'atestado' ? '#ec4899' : '#ef4444',
-                                  backgroundColor: absenceReasons[student.id].type === 'atestado' ? '#fdf2f8' : '#fef2f2',
-                                  padding: '2px 8px',
-                                  borderRadius: '6px',
-                                  marginTop: '3px',
-                                  border: `1px solid ${absenceReasons[student.id].type === 'atestado' ? '#fbcfe8' : '#fca5a5'}`
-                                }}>
-                                  <AlertCircle size={10} />
-                                  Ausência Programada: {absenceReasons[student.id].text}
-                                </span>
-                              )}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
+                                {isAcompanhamentoScheduledForDate(student, attendanceDate) && (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '10.5px',
+                                    fontWeight: 600,
+                                    color: '#0369a1',
+                                    backgroundColor: '#f0f9ff',
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    marginTop: '2px',
+                                    border: '1px solid #bae6fd'
+                                  }}>
+                                    <span>🩺</span>
+                                    <span>Acompanhamento: {student.acompanhamento_obs || 'Orientação médica/justificada'}</span>
+                                  </span>
+                                )}
+                                {absenceReasons[student.id] && (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    color: absenceReasons[student.id].type === 'atestado' ? '#ec4899' : '#ef4444',
+                                    backgroundColor: absenceReasons[student.id].type === 'atestado' ? '#fdf2f8' : '#fef2f2',
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    marginTop: '2px',
+                                    border: `1px solid ${absenceReasons[student.id].type === 'atestado' ? '#fbcfe8' : '#fca5a5'}`
+                                  }}>
+                                    <AlertCircle size={10} />
+                                    Ausência Programada: {absenceReasons[student.id].text}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>

@@ -921,6 +921,29 @@ export default function App() {
                   </div>
                 )}
 
+                {/* AVISO DE ACOMPANHAMENTO */}
+                {selectedStudentForOcc && selectedStudentForOcc.has_acompanhamento && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    padding: '12px 14px',
+                    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '10px',
+                    marginBottom: '16px',
+                    color: isDark ? '#93c5fd' : '#1e40af',
+                    fontSize: '12.5px',
+                    lineHeight: '1.5'
+                  }}>
+                    <span style={{ fontSize: '18px', flexShrink: 0 }}>🩺</span>
+                    <div style={{ textAlign: 'left' }}>
+                      <strong style={{ display: 'block', marginBottom: '2px', color: isDark ? '#60a5fa' : '#1d4ed8' }}>Este aluno possui acompanhamento/orientação ativa:</strong>
+                      <span>{selectedStudentForOcc.acompanhamento_obs || 'Nenhuma observação declarada.'}</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* DADOS DINÂMICOS: ATRASO */}
                 {occType === 'atraso' && (
                   <div className="dynamic-fields-section">
