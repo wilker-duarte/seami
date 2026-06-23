@@ -122,9 +122,25 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
       const dateAttList   = [];
       const dateAttLabels = [];
       const today = new Date();
-      for (let i = 14; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(today.getDate() - i);
+      
+      let start, end;
+      if (dateStart && dateEnd) {
+        start = new Date(dateStart + 'T00:00:00');
+        end   = new Date(dateEnd + 'T00:00:00');
+      } else if (dateStart) {
+        start = new Date(dateStart + 'T00:00:00');
+        end   = today;
+      } else if (dateEnd) {
+        end   = new Date(dateEnd + 'T00:00:00');
+        start = new Date(end);
+        start.setDate(end.getDate() - 14);
+      } else {
+        end   = today;
+        start = new Date();
+        start.setDate(today.getDate() - 14);
+      }
+
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         if (d.getDay() !== 0 && d.getDay() !== 6) {
           const iso = d.toISOString().split('T')[0];
           dateAttList.push(iso);
@@ -164,14 +180,39 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
       const monthlyDelays = {};
       const monthsName = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
       const today = new Date();
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-        monthlyDelays[monthsName[d.getMonth()]] = 0;
+      
+      let start, end;
+      if (dateStart && dateEnd) {
+        start = new Date(dateStart + 'T00:00:00');
+        end   = new Date(dateEnd + 'T00:00:00');
+      } else if (dateStart) {
+        start = new Date(dateStart + 'T00:00:00');
+        end   = today;
+      } else if (dateEnd) {
+        end   = new Date(dateEnd + 'T00:00:00');
+        start = new Date(end.getFullYear(), end.getMonth() - 5, 1);
+      } else {
+        end   = today;
+        start = new Date(today.getFullYear(), today.getMonth() - 5, 1);
       }
+
+      // Gerar todos os meses no intervalo
+      const temp = new Date(start.getFullYear(), start.getMonth(), 1);
+      while (temp <= end || (temp.getFullYear() === end.getFullYear() && temp.getMonth() === end.getMonth())) {
+        const monthKey = `${monthsName[temp.getMonth()]}/${String(temp.getFullYear()).slice(-2)}`;
+        monthlyDelays[monthKey] = 0;
+        temp.setMonth(temp.getMonth() + 1);
+      }
+
       filtered.filter(o => o.type === 'atraso').forEach(o => {
         if (o.date) {
-          const name = monthsName[parseInt(o.date.split('-')[1]) - 1];
-          if (monthlyDelays[name] !== undefined) monthlyDelays[name]++;
+          const parts = o.date.split('-');
+          const year = parseInt(parts[0]);
+          const monthIndex = parseInt(parts[1]) - 1;
+          const monthKey = `${monthsName[monthIndex]}/${String(year).slice(-2)}`;
+          if (monthlyDelays[monthKey] !== undefined) {
+            monthlyDelays[monthKey]++;
+          }
         }
       });
       chartInstances.current.atrasosMes = new Chart(ctx3, {
@@ -306,13 +347,13 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     const fontColor = isDark ? '#94a3b8' : '#64748b';
     const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)';
 
-    const { classroom, studentId } = filters;
+    const { dateStart, dateEnd, classroom, studentId } = filters;
     const currentYear = new Date().getFullYear();
-    const yearStart = `${currentYear}-01-01`;
-    const yearEnd   = `${currentYear}-12-31`;
+    const start = dateStart || `${currentYear}-01-01`;
+    const end   = dateEnd || `${currentYear}-12-31`;
 
-    // Filtrar atrasos do ano atual do caderno SEAMI (occurrences type=atraso)
-    let atrasosAno = (occurrences || []).filter(o => o.type === 'atraso' && o.date >= yearStart && o.date <= yearEnd);
+    // Filtrar atrasos do período do caderno SEAMI (occurrences type=atraso)
+    let atrasosAno = (occurrences || []).filter(o => o.type === 'atraso' && o.date >= start && o.date <= end);
     if (classroom) atrasosAno = atrasosAno.filter(o => o.classroom === classroom);
     if (studentId) atrasosAno = atrasosAno.filter(o => o.studentId === studentId);
 
@@ -589,18 +630,18 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     const fontColor = isDark ? '#94a3b8' : '#64748b';
     const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)';
 
-    const { classroom, studentId } = filters;
+    const { dateStart, dateEnd, classroom, studentId } = filters;
     const currentYear = new Date().getFullYear();
-    const yearStart = `${currentYear}-01-01`;
-    const yearEnd   = `${currentYear}-12-31`;
+    const start = dateStart || `${currentYear}-01-01`;
+    const end   = dateEnd || `${currentYear}-12-31`;
 
-    // Filtrar faltas do ano atual do caderno SEAMI (occurrences type=falta)
-    let faltasAno = (occurrences || []).filter(o => o.type === 'falta' && o.date >= yearStart && o.date <= yearEnd);
+    // Filtrar faltas do período do caderno SEAMI (occurrences type=falta)
+    let faltasAno = (occurrences || []).filter(o => o.type === 'falta' && o.date >= start && o.date <= end);
     if (classroom) faltasAno = faltasAno.filter(o => o.classroom === classroom);
     if (studentId) faltasAno = faltasAno.filter(o => o.studentId === studentId);
 
     // Também considerar faltas da chamada (attendanceList status F e FJ)
-    let attFaltas = (attendanceList || []).filter(o => (o.status === 'F' || o.status === 'FJ') && o.date >= yearStart && o.date <= yearEnd);
+    let attFaltas = (attendanceList || []).filter(o => (o.status === 'F' || o.status === 'FJ') && o.date >= start && o.date <= end);
     if (classroom) attFaltas = attFaltas.filter(o => o.classroom === classroom);
     if (studentId) attFaltas = attFaltas.filter(o => o.studentId === studentId);
 
@@ -862,7 +903,9 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
           <div className="chart-card">
             <div className="chart-card-header">
               <h3>Evolução Diária da Frequência</h3>
-              <span className="chart-legend-pill" style={{ backgroundColor: '#eff6ff', color: '#3b82f6' }}>Últimos 15 Dias Letivos</span>
+              <span className="chart-legend-pill" style={{ backgroundColor: '#eff6ff', color: '#3b82f6' }}>
+                {filters.dateStart || filters.dateEnd ? 'Intervalo Selecionado' : 'Últimos 15 Dias Letivos'}
+              </span>
             </div>
             <div className="chart-container">
               <canvas ref={chartRefs.frequenciaDiariaReal}></canvas>
@@ -875,7 +918,9 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
           <div className="chart-card full-width-chart">
             <div className="chart-card-header" style={{ flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                <h3 style={{ margin: 0 }}>📅 Faltas por Aluno no Ano — Justificadas vs Não Justificadas</h3>
+                <h3 style={{ margin: 0 }}>
+                  📅 Faltas por Aluno {filters.dateStart || filters.dateEnd ? 'no Período' : 'no Ano'} — Justificadas vs Não Justificadas
+                </h3>
                 <span style={{ fontSize: '11.5px', color: 'var(--slate-500)', fontFamily: 'Inter, sans-serif' }}>
                   Cada barra mostra o total de faltas por aluno empilhado por tipo · Máx. 15 alunos com mais faltas
                 </span>
@@ -939,7 +984,9 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
           <div className="chart-card full-width-chart">
             <div className="chart-card-header" style={{ flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                <h3 style={{ margin: 0 }}>⏰ Atrasos por Aluno no Ano — Justificados vs Não Justificados</h3>
+                <h3 style={{ margin: 0 }}>
+                  ⏰ Atrasos por Aluno {filters.dateStart || filters.dateEnd ? 'no Período' : 'no Ano'} — Justificados vs Não Justificados
+                </h3>
                 <span style={{ fontSize: '11.5px', color: 'var(--slate-500)', fontFamily: 'Inter, sans-serif' }}>
                   Cada barra mostra o total de atrasos por aluno empilhado por tipo · Máx. 15 alunos com mais atrasos
                 </span>

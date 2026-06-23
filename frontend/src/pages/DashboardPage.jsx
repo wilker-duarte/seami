@@ -79,11 +79,15 @@ export default function DashboardPage({ setActiveModule }) {
   const lackList = filtered.filter(o => o.type === 'falta');
   const lacksJustified = lackList.filter(o => o.justified === 'sim').length;
 
-  const activeAtestToday = occurrences.filter(o => {
+  const hasDateFilter = !!(filters.dateStart || filters.dateEnd);
+  const startBound = filters.dateStart || today;
+  const endBound = filters.dateEnd || today;
+
+  const activeAtestPeriod = occurrences.filter(o => {
     if (o.type !== 'atestado') return false;
     if (filters.classroom && o.classroom !== filters.classroom) return false;
     if (filters.studentId && o.studentId !== filters.studentId) return false;
-    return o.startDate <= today && o.endDate >= today;
+    return o.startDate <= endBound && o.endDate >= startBound;
   }).length;
 
   const outList = filtered.filter(o => o.type === 'saida');
@@ -114,7 +118,7 @@ export default function DashboardPage({ setActiveModule }) {
     delaysCount: delayList.length, delaysMinutes: totalMinutes,
     lacksCount: lackList.length, lacksJustified,
     atestadosCount: filtered.filter(o => o.type === 'atestado').length,
-    atestadosAtivosHoje: activeAtestToday,
+    atestadosAtivosHoje: activeAtestPeriod,
     saidasCount: outList.length, saidasRetornos: outList.filter(o => o.hasReturn === 'sim').length,
     amamentacaoCount: amamList.length,
     amamentacaoAvg: amamList.length > 0 ? Math.round(totalAmamMins / amamList.length) : 0,
@@ -309,7 +313,13 @@ export default function DashboardPage({ setActiveModule }) {
           <div className="metric-card metric-atestados" onClick={() => navigate('/caderno-seami/atestados')} style={{ cursor: 'pointer' }}>
             <div className="metric-header"><span className="metric-title">Atestados Médicos</span><div className="metric-icon-box"><Activity size={18} /></div></div>
             <div className="metric-value">{metrics.atestadosCount}</div>
-            <div className="metric-footer text-atestados"><span>{metrics.atestadosAtivosHoje} atestados ativos hoje</span></div>
+            <div className="metric-footer text-atestados">
+              <span>
+                {hasDateFilter 
+                  ? `${metrics.atestadosAtivosHoje} atestados ativos no período`
+                  : `${metrics.atestadosAtivosHoje} atestados ativos hoje`}
+              </span>
+            </div>
           </div>
           <div className="metric-card metric-saidas" onClick={() => navigate('/caderno-seami/saidas')} style={{ cursor: 'pointer' }}>
             <div className="metric-header"><span className="metric-title">Saídas Antecipadas</span><div className="metric-icon-box"><LogOut size={18} /></div></div>
