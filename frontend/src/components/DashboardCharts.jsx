@@ -23,6 +23,10 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
   // Estado para abrir a modal de detalhamento do aluno
   const [selectedStudentDetails, setSelectedStudentDetails] = useState(null);
 
+  // Estados para a modal de ranking completo (ver todos)
+  const [viewAllModal, setViewAllModal] = useState(null);
+  const [viewAllSearch, setViewAllSearch] = useState('');
+
   const chartRefs = {
     frequenciaSala:       useRef(null),
     frequenciaDiariaReal: useRef(null),
@@ -32,6 +36,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     amamentacaoDiaria:    useRef(null),
     faltasPorAluno:       useRef(null),
     atrasosPorAluno:      useRef(null),
+    atestadosPorAluno:    useRef(null),
   };
 
   const chartInstances = useRef({
@@ -43,6 +48,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     amamentacaoDiaria:    null,
     faltasPorAluno:       null,
     atrasosPorAluno:      null,
+    atestadosPorAluno:    null,
   });
 
   // Estado do total de amamentação do período
@@ -510,6 +516,151 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
   }, [occurrences, filters, isDark, showAtrasosJustified, showAtrasosUnjustified, students]);
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Effect 6: Gráfico de Atestados por Aluno (barras verticais)
+  // ──────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fontColor = isDark ? '#94a3b8' : '#64748b';
+    const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)';
+
+    const { dateStart, dateEnd, classroom, studentId } = filters;
+    const currentYear = new Date().getFullYear();
+    const start = dateStart || `${currentYear}-01-01`;
+    const end   = dateEnd || `${currentYear}-12-31`;
+
+    // Filtrar atestados do período do caderno SEAMI (occurrences type=atestado)
+    let atestadosAno = (occurrences || []).filter(o => o.type === 'atestado' && o.date >= start && o.date <= end);
+    if (classroom) atestadosAno = atestadosAno.filter(o => o.classroom === classroom);
+    if (studentId) atestadosAno = atestadosAno.filter(o => o.studentId === studentId);
+
+    // Agrupar por aluno
+    const studentMap = {}; // id -> { name, classroom, total: 0, records: [] }
+    atestadosAno.forEach(o => {
+      if (!o.studentId || !o.studentName) return;
+      if (!studentMap[o.studentId]) {
+        const studentInfo = (students || []).find(s => s.id === o.studentId);
+        studentMap[o.studentId] = { 
+          id: o.studentId, 
+          name: o.studentName, 
+          classroom: o.classroom || 'Alegria', 
+          total: 0, 
+          records: [],
+          has_acompanhamento: studentInfo?.has_acompanhamento || false,
+          acompanhamento_obs: studentInfo?.acompanhamento_obs || ''
+        };
+      }
+      studentMap[o.studentId].records.push({
+        date: o.date,
+        startDate: o.startDate || o.date,
+        endDate: o.endDate || o.date,
+        days: o.days || 1,
+        cid: o.cid || '',
+        justified: 'sim',
+        motive: o.motive || 'Atestado Médico apresentado',
+        classroom: o.classroom || 'Alegria',
+        type: 'atestado'
+      });
+      studentMap[o.studentId].total++;
+    });
+
+    // Ordenar por total (desc), pegar top 15
+    const sorted = Object.values(studentMap)
+      .filter(s => s.total > 0)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 15);
+
+    if (chartInstances.current.atestadosPorAluno) {
+      chartInstances.current.atestadosPorAluno.destroy();
+      chartInstances.current.atestadosPorAluno = null;
+    }
+
+    const ctx = chartRefs.atestadosPorAluno.current;
+    if (ctx) {
+      chartInstances.current.atestadosPorAluno = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: sorted.length > 0 ? sorted.map(s => {
+            const shortName = s.name.split(' ').slice(0, 2).join(' ');
+            return s.has_acompanhamento ? `${shortName} 🩺` : shortName;
+          }) : ['Sem dados'],
+          datasets: [{
+            label: 'Atestados Médicos',
+            data: sorted.length > 0 ? sorted.map(s => s.total) : [0],
+            backgroundColor: 'rgba(124, 58, 237, 0.82)',
+            borderColor: '#7c3aed',
+            borderWidth: 1,
+            borderRadius: 6,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          onClick: (event, elements) => {
+            if (elements.length > 0) {
+              const elementIndex = elements[0].index;
+              const student = sorted[elementIndex];
+              if (student) {
+                setSelectedStudentDetails({
+                  id: student.id,
+                  name: student.name,
+                  classroom: student.classroom,
+                  chartType: 'atestado',
+                  records: student.records || [],
+                  has_acompanhamento: student.has_acompanhamento || false,
+                  acompanhamento_obs: student.acompanhamento_obs || ''
+                });
+              }
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: (items) => {
+                  const s = sorted[items[0].dataIndex];
+                  if (!s) return '';
+                  return s.has_acompanhamento ? `${s.name} (🩺 Acomp.)` : s.name;
+                },
+                afterBody: (items) => {
+                  const idx = items[0].dataIndex;
+                  const s = sorted[idx];
+                  if (!s) return [];
+                  const lines = [
+                    '',
+                    `📊 Total de atestados: ${s.total}`,
+                  ];
+                  if (s.has_acompanhamento) {
+                    lines.push('', `🩺 Acompanhamento: ${s.acompanhamento_obs || 'Sim'}`);
+                  }
+                  return lines;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: fontColor, font: { size: 11 }, maxRotation: 35, minRotation: 20 },
+            },
+            y: {
+              grid: { color: gridColor },
+              ticks: { color: fontColor, stepSize: 1 },
+              min: 0,
+            },
+          },
+        },
+      });
+    }
+
+    return () => {
+      if (chartInstances.current.atestadosPorAluno) {
+        chartInstances.current.atestadosPorAluno.destroy();
+        chartInstances.current.atestadosPorAluno = null;
+      }
+    };
+  }, [occurrences, filters, isDark, students]);
+
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Effect 3: Gráfico de Amamentação — linha diária (últimos 30 dias ou filtro)
   // ──────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -859,21 +1010,229 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     };
   }, [occurrences, attendanceList, filters, isDark, showFaltasJustified, showFaltasUnjustified, students]);
 
+  // Métodos para abrir ranking completo de alunos
+  const handleOpenViewAllFaltas = () => {
+    const currentYear = new Date().getFullYear();
+    const start = filters.dateStart || `${currentYear}-01-01`;
+    const end   = filters.dateEnd || `${currentYear}-12-31`;
+
+    let faltasAno = (occurrences || []).filter(o => o.type === 'falta' && o.date >= start && o.date <= end);
+    if (filters.classroom) faltasAno = faltasAno.filter(o => o.classroom === filters.classroom);
+    if (filters.studentId) faltasAno = faltasAno.filter(o => o.studentId === filters.studentId);
+
+    let attFaltas = (attendanceList || []).filter(o => (o.status === 'F' || o.status === 'FJ') && o.date >= start && o.date <= end);
+    if (filters.classroom) attFaltas = attFaltas.filter(o => o.classroom === filters.classroom);
+    if (filters.studentId) attFaltas = attFaltas.filter(o => o.studentId === filters.studentId);
+
+    const studentMap = {};
+    attFaltas.forEach(o => {
+      if (!o.studentId || !o.studentName) return;
+      if (!studentMap[o.studentId]) {
+        const studentInfo = (students || []).find(s => s.id === o.studentId);
+        studentMap[o.studentId] = { 
+          id: o.studentId, 
+          name: o.studentName, 
+          classroom: o.classroom || 'Alegria', 
+          justified: 0, 
+          unjustified: 0, 
+          records: [],
+          has_acompanhamento: studentInfo?.has_acompanhamento || false,
+          acompanhamento_obs: studentInfo?.acompanhamento_obs || ''
+        };
+      }
+      studentMap[o.studentId].records.push({
+        date: o.date,
+        justified: o.status === 'FJ' ? 'sim' : 'nao',
+        motive: o.status === 'FJ' ? 'Falta justificada na chamada' : 'Falta lançada na chamada',
+        classroom: o.classroom || 'Alegria',
+        type: 'chamada'
+      });
+      if (o.status === 'FJ') studentMap[o.studentId].justified++;
+      else studentMap[o.studentId].unjustified++;
+    });
+
+    faltasAno.forEach(o => {
+      if (!o.studentId || !o.studentName) return;
+      if (!studentMap[o.studentId]) {
+        const studentInfo = (students || []).find(s => s.id === o.studentId);
+        studentMap[o.studentId] = { 
+          id: o.studentId, 
+          name: o.studentName, 
+          classroom: o.classroom || 'Alegria', 
+          justified: 0, 
+          unjustified: 0, 
+          records: [],
+          has_acompanhamento: studentInfo?.has_acompanhamento || false,
+          acompanhamento_obs: studentInfo?.acompanhamento_obs || ''
+        };
+      }
+      const alreadyHas = studentMap[o.studentId].records.some(r => r.date === o.date);
+      if (!alreadyHas) {
+        studentMap[o.studentId].records.push({
+          date: o.date,
+          justified: o.justified,
+          motive: o.motive || 'Sem justificativa declarada',
+          classroom: o.classroom || 'Alegria',
+          type: 'caderno'
+        });
+        if (o.justified === 'sim') studentMap[o.studentId].justified++;
+        else studentMap[o.studentId].unjustified++;
+      }
+    });
+
+    const list = Object.values(studentMap)
+      .map(s => {
+        let activeTotal = 0;
+        if (showFaltasJustified) activeTotal += s.justified;
+        if (showFaltasUnjustified) activeTotal += s.unjustified;
+        return {
+          ...s,
+          total: activeTotal
+        };
+      })
+      .filter(s => s.total > 0)
+      .sort((a, b) => b.total - a.total);
+
+    setViewAllModal({
+      type: 'falta',
+      title: 'Ranking Geral de Faltas por Aluno',
+      students: list
+    });
+  };
+
+  const handleOpenViewAllAtrasos = () => {
+    const currentYear = new Date().getFullYear();
+    const start = filters.dateStart || `${currentYear}-01-01`;
+    const end   = filters.dateEnd || `${currentYear}-12-31`;
+
+    let atrasosAno = (occurrences || []).filter(o => o.type === 'atraso' && o.date >= start && o.date <= end);
+    if (filters.classroom) atrasosAno = atrasosAno.filter(o => o.classroom === filters.classroom);
+    if (filters.studentId) atrasosAno = atrasosAno.filter(o => o.studentId === filters.studentId);
+
+    const studentMap = {};
+    atrasosAno.forEach(o => {
+      if (!o.studentId || !o.studentName) return;
+      if (!studentMap[o.studentId]) {
+        const studentInfo = (students || []).find(s => s.id === o.studentId);
+        studentMap[o.studentId] = { 
+          id: o.studentId, 
+          name: o.studentName, 
+          classroom: o.classroom || 'Alegria', 
+          justified: 0, 
+          unjustified: 0, 
+          records: [],
+          has_acompanhamento: studentInfo?.has_acompanhamento || false,
+          acompanhamento_obs: studentInfo?.acompanhamento_obs || ''
+        };
+      }
+      studentMap[o.studentId].records.push({
+        date: o.date,
+        justified: o.justified,
+        motive: o.motive || 'Sem justificativa declarada',
+        classroom: o.classroom || 'Alegria',
+        type: 'atraso'
+      });
+      if (o.justified === 'sim') studentMap[o.studentId].justified++;
+      else studentMap[o.studentId].unjustified++;
+    });
+
+    const list = Object.values(studentMap)
+      .map(s => {
+        let activeTotal = 0;
+        if (showAtrasosJustified) activeTotal += s.justified;
+        if (showAtrasosUnjustified) activeTotal += s.unjustified;
+        return {
+          ...s,
+          total: activeTotal
+        };
+      })
+      .filter(s => s.total > 0)
+      .sort((a, b) => b.total - a.total);
+
+    setViewAllModal({
+      type: 'atraso',
+      title: 'Ranking Geral de Atrasos por Aluno',
+      students: list
+    });
+  };
+
+  const handleOpenViewAllAtestados = () => {
+    const currentYear = new Date().getFullYear();
+    const start = filters.dateStart || `${currentYear}-01-01`;
+    const end   = filters.dateEnd || `${currentYear}-12-31`;
+
+    let atestadosAno = (occurrences || []).filter(o => o.type === 'atestado' && o.date >= start && o.date <= end);
+    if (filters.classroom) atestadosAno = atestadosAno.filter(o => o.classroom === filters.classroom);
+    if (filters.studentId) atestadosAno = atestadosAno.filter(o => o.studentId === filters.studentId);
+
+    const studentMap = {};
+    atestadosAno.forEach(o => {
+      if (!o.studentId || !o.studentName) return;
+      if (!studentMap[o.studentId]) {
+        const studentInfo = (students || []).find(s => s.id === o.studentId);
+        studentMap[o.studentId] = { 
+          id: o.studentId, 
+          name: o.studentName, 
+          classroom: o.classroom || 'Alegria', 
+          total: 0, 
+          records: [],
+          has_acompanhamento: studentInfo?.has_acompanhamento || false,
+          acompanhamento_obs: studentInfo?.acompanhamento_obs || ''
+        };
+      }
+      studentMap[o.studentId].records.push({
+        date: o.date,
+        startDate: o.startDate || o.date,
+        endDate: o.endDate || o.date,
+        days: o.days || 1,
+        cid: o.cid || '',
+        justified: 'sim',
+        motive: o.motive || 'Atestado Médico apresentado',
+        classroom: o.classroom || 'Alegria',
+        type: 'atestado'
+      });
+      studentMap[o.studentId].total++;
+    });
+
+    const list = Object.values(studentMap)
+      .map(s => ({
+        ...s,
+        total: s.total
+      }))
+      .filter(s => s.total > 0)
+      .sort((a, b) => b.total - a.total);
+
+    setViewAllModal({
+      type: 'atestado',
+      title: 'Ranking Geral de Atestados por Aluno',
+      students: list
+    });
+  };
+
   // Auxiliar para filtrar os registros a serem mostrados na modal
   const getFilteredRecords = (details) => {
     if (!details) return [];
+    const currentYear = new Date().getFullYear();
+    const start = filters.dateStart || `${currentYear}-01-01`;
+    const end   = filters.dateEnd || `${currentYear}-12-31`;
+
+    const dateFiltered = details.records.filter(r => r.date >= start && r.date <= end);
+
     if (details.chartType === 'falta') {
-      return details.records.filter(r => {
+      return dateFiltered.filter(r => {
         if (r.justified === 'sim' && showFaltasJustified) return true;
         if (r.justified !== 'sim' && showFaltasUnjustified) return true;
         return false;
       });
-    } else {
-      return details.records.filter(r => {
+    } else if (details.chartType === 'atraso') {
+      return dateFiltered.filter(r => {
         if (r.justified === 'sim' && showAtrasosJustified) return true;
         if (r.justified !== 'sim' && showAtrasosUnjustified) return true;
         return false;
       });
+    } else {
+      // 'atestado'
+      return dateFiltered;
     }
   };
 
@@ -925,7 +1284,27 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                   Cada barra mostra o total de faltas por aluno empilhado por tipo · Máx. 15 alunos com mais faltas
                 </span>
               </div>
-              <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button 
+                  onClick={handleOpenViewAllFaltas}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '5px', 
+                    fontSize: '11px', 
+                    color: 'var(--slate-600)', 
+                    fontWeight: 600, 
+                    padding: '5px 12px', 
+                    borderRadius: '20px', 
+                    backgroundColor: 'var(--slate-100)', 
+                    border: '1.5px solid var(--slate-200)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    marginRight: '8px'
+                  }}
+                >
+                  🔍 Ver Todos
+                </button>
                 <button 
                   onClick={() => setShowFaltasJustified(!showFaltasJustified)}
                   style={{ 
@@ -991,7 +1370,27 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                   Cada barra mostra o total de atrasos por aluno empilhado por tipo · Máx. 15 alunos com mais atrasos
                 </span>
               </div>
-              <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button 
+                  onClick={handleOpenViewAllAtrasos}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '5px', 
+                    fontSize: '11px', 
+                    color: 'var(--slate-600)', 
+                    fontWeight: 600, 
+                    padding: '5px 12px', 
+                    borderRadius: '20px', 
+                    backgroundColor: 'var(--slate-100)', 
+                    border: '1.5px solid var(--slate-200)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    marginRight: '8px'
+                  }}
+                >
+                  🔍 Ver Todos
+                </button>
                 <button 
                   onClick={() => setShowAtrasosJustified(!showAtrasosJustified)}
                   style={{ 
@@ -1038,6 +1437,47 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
             </div>
             <div className="chart-container-large">
               <canvas ref={chartRefs.atrasosPorAluno}></canvas>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráfico de Atestados por Aluno — Barras Verticais */}
+        <div className="charts-grid" style={{ marginTop: '20px' }}>
+          <div className="chart-card full-width-chart">
+            <div className="chart-card-header" style={{ flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <h3 style={{ margin: 0 }}>
+                  🏥 Atestados Médicos por Aluno {filters.dateStart || filters.dateEnd ? 'no Período' : 'no Ano'}
+                </h3>
+                <span style={{ fontSize: '11.5px', color: 'var(--slate-500)', fontFamily: 'Inter, sans-serif' }}>
+                  Cada barra mostra o total de atestados apresentados por aluno · Máx. 15 alunos com mais atestados
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', alignItems: 'center' }}>
+                <button 
+                  onClick={handleOpenViewAllAtestados}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '5px', 
+                    fontSize: '11px', 
+                    color: 'var(--slate-600)', 
+                    fontWeight: 600, 
+                    padding: '5px 12px', 
+                    borderRadius: '20px', 
+                    backgroundColor: 'var(--slate-100)', 
+                    border: '1.5px solid var(--slate-200)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  🔍 Ver Todos
+                </button>
+                <span className="chart-legend-pill" style={{ backgroundColor: '#f5f3ff', color: '#7c3aed' }}>Atestados</span>
+              </div>
+            </div>
+            <div className="chart-container-large">
+              <canvas ref={chartRefs.atestadosPorAluno}></canvas>
             </div>
           </div>
         </div>
@@ -1138,22 +1578,40 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
         </div>
       </div>
 
-      {/* MODAL DE DETALHES DE FALTAS/ATRASOS DO ALUNO */}
+      {/* MODAL DE DETALHES DE FALTAS/ATRASOS/ATESTADOS DO ALUNO */}
       {selectedStudentDetails && (() => {
         const filteredRecords = getFilteredRecords(selectedStudentDetails);
         const isFalta = selectedStudentDetails.chartType === 'falta';
+        const isAtraso = selectedStudentDetails.chartType === 'atraso';
+        const isAtestado = selectedStudentDetails.chartType === 'atestado';
+
+        let modalTitle = 'Detalhamento de Atrasos';
+        let modalIcon = '⏰';
+        if (isFalta) {
+          modalTitle = 'Detalhamento de Faltas';
+          modalIcon = '📅';
+        } else if (isAtestado) {
+          modalTitle = 'Detalhamento de Atestados Médicos';
+          modalIcon = '🏥';
+        }
+
         return (
           <div className="modal-overlay active" onClick={() => setSelectedStudentDetails(null)} style={{ zIndex: 1000 }}>
             <div className="modal-card" style={{ maxWidth: '600px', width: '95%', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }} onClick={(e) => e.stopPropagation()}>
               <div className="modal-header" style={{ borderBottom: '1px solid var(--slate-100)', padding: '16px 24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '26px' }}>{isFalta ? '📅' : '⏰'}</span>
+                  <span style={{ fontSize: '26px' }}>{modalIcon}</span>
                   <div style={{ textAlign: 'left' }}>
                     <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: 'var(--slate-800)', fontFamily: 'Outfit, sans-serif' }}>
-                      Detalhamento de {isFalta ? 'Faltas' : 'Atrasos'}
+                      {modalTitle}
                     </h2>
                     <span style={{ fontSize: '12px', color: 'var(--slate-500)' }}>
                       Estudante: <strong>{selectedStudentDetails.name}</strong> &middot; Sala {selectedStudentDetails.classroom}
+                      {filters.dateStart || filters.dateEnd ? (
+                        <span style={{ display: 'block', marginTop: '2px', fontSize: '11px', color: 'var(--slate-400)' }}>
+                          Período: {filters.dateStart ? filters.dateStart.split('-').reverse().join('/') : ''} a {filters.dateEnd ? filters.dateEnd.split('-').reverse().join('/') : ''}
+                        </span>
+                      ) : null}
                     </span>
                   </div>
                 </div>
@@ -1185,7 +1643,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
 
                 <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--slate-700)' }}>
-                    Registros no Ano ({filteredRecords.length})
+                    {filters.dateStart || filters.dateEnd ? 'Registros no Período' : 'Registros no Ano'} ({filteredRecords.length})
                   </span>
                 </div>
                 
@@ -1216,13 +1674,15 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                           >
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, flex: 1 }}>
                               <span style={{ fontWeight: '700', fontSize: '13.5px', color: 'var(--slate-800)' }}>
-                                {dateBR}
+                                {isAtestado && record.startDate && record.endDate 
+                                  ? `${record.startDate.split('-').reverse().join('/')} a ${record.endDate.split('-').reverse().join('/')} (${record.days} ${record.days === 1 ? 'dia' : 'dias'})`
+                                  : dateBR}
                               </span>
                               <span style={{ fontSize: '12px', color: 'var(--slate-500)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                <strong>Motivo:</strong> {record.motive}
+                                <strong>Motivo:</strong> {record.motive} {isAtestado && record.cid ? `(CID: ${record.cid})` : ''}
                               </span>
                               <span style={{ fontSize: '10px', color: 'var(--slate-400)', textTransform: 'capitalize' }}>
-                                Origem: {record.type === 'chamada' ? 'Chamada de Classe' : record.type === 'caderno' ? 'Caderno SEAMI' : 'Atraso Caderno'}
+                                Origem: {record.type === 'chamada' ? 'Chamada de Classe' : record.type === 'caderno' ? 'Caderno SEAMI' : isAtestado ? 'Atestado Médico' : 'Atraso Caderno'}
                               </span>
                             </div>
                             
@@ -1232,32 +1692,55 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
                                 fontWeight: '700', 
                                 padding: '3px 8px', 
                                 borderRadius: '6px', 
-                                color: isJustified ? '#047857' : '#991b1b',
-                                backgroundColor: isJustified ? '#ecfdf5' : '#fef2f2',
-                                border: `1px solid ${isJustified ? '#a7f3d0' : '#fca5a5'}`
+                                color: (isJustified || isAtestado) ? '#047857' : '#991b1b',
+                                backgroundColor: (isJustified || isAtestado) ? '#ecfdf5' : '#fef2f2',
+                                border: `1px solid ${(isJustified || isAtestado) ? '#a7f3d0' : '#fca5a5'}`
                               }}>
-                                {isJustified ? 'Justificado' : 'Não Justif.'}
+                                {(isJustified || isAtestado) ? 'Justificado' : 'Não Justif.'}
                               </span>
-                              <button 
-                                onClick={() => {
-                                  setSelectedStudentDetails(null);
-                                  navigate(`/chamada?date=${record.date}&classroom=${record.classroom}`, { state: { date: record.date, classroom: record.classroom } });
-                                }}
-                                className="primary-btn" 
-                                style={{ 
-                                  padding: '6px 12px', 
-                                  fontSize: '11px', 
-                                  borderRadius: '8px',
-                                  backgroundColor: 'var(--brand-primary)',
-                                  color: 'white',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  fontWeight: 600,
-                                  transition: 'all 0.15s ease'
-                                }}
-                              >
-                                Ir para Chamada
-                              </button>
+                              {isAtestado ? (
+                                <button 
+                                  onClick={() => {
+                                    setSelectedStudentDetails(null);
+                                    navigate(`/caderno-seami/atestados`);
+                                  }}
+                                  className="primary-btn" 
+                                  style={{ 
+                                    padding: '6px 12px', 
+                                    fontSize: '11px', 
+                                    borderRadius: '8px',
+                                    backgroundColor: '#7c3aed',
+                                    color: 'white',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontWeight: 600,
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  Ver no Caderno
+                                </button>
+                              ) : (
+                                <button 
+                                  onClick={() => {
+                                    setSelectedStudentDetails(null);
+                                    navigate(`/chamada?date=${record.date}&classroom=${record.classroom}`, { state: { date: record.date, classroom: record.classroom } });
+                                  }}
+                                  className="primary-btn" 
+                                  style={{ 
+                                    padding: '6px 12px', 
+                                    fontSize: '11px', 
+                                    borderRadius: '8px',
+                                    backgroundColor: 'var(--brand-primary)',
+                                    color: 'white',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontWeight: 600,
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  Ir para Chamada
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -1268,6 +1751,148 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
               
               <div className="modal-footer" style={{ borderTop: '1px solid var(--slate-100)', padding: '16px 24px' }}>
                 <button className="secondary-btn" onClick={() => setSelectedStudentDetails(null)} style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '8px' }}>Fechar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL DE RANKING COMPLETO (VER TODOS) */}
+      {viewAllModal && (() => {
+        const title = viewAllModal.title;
+        const type = viewAllModal.type;
+        const color = type === 'falta' ? 'var(--brand-primary)' : type === 'atraso' ? '#f59e0b' : '#7c3aed';
+        const icon = type === 'falta' ? '📅' : type === 'atraso' ? '⏰' : '🏥';
+        
+        // Filtrar a lista pelo termo de busca
+        const filteredList = viewAllModal.students.filter(s => 
+          s.name.toLowerCase().includes(viewAllSearch.toLowerCase()) || 
+          s.classroom.toLowerCase().includes(viewAllSearch.toLowerCase())
+        );
+
+        return (
+          <div className="modal-overlay active" onClick={() => { setViewAllModal(null); setViewAllSearch(''); }} style={{ zIndex: 999 }}>
+            <div className="modal-card" style={{ maxWidth: '700px', width: '95%', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header" style={{ borderBottom: '1px solid var(--slate-100)', padding: '16px 24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '26px' }}>{icon}</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: 'var(--slate-800)', fontFamily: 'Outfit, sans-serif' }}>
+                      {title}
+                    </h2>
+                    <span style={{ fontSize: '12px', color: 'var(--slate-500)' }}>
+                      Total de alunos com registros: <strong>{viewAllModal.students.length}</strong>
+                      {filters.dateStart || filters.dateEnd ? (
+                        <span style={{ display: 'block', marginTop: '2px', fontSize: '11px', color: 'var(--slate-400)' }}>
+                          Período: {filters.dateStart ? filters.dateStart.split('-').reverse().join('/') : ''} a {filters.dateEnd ? filters.dateEnd.split('-').reverse().join('/') : ''}
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                </div>
+                <button className="modal-close-btn" onClick={() => { setViewAllModal(null); setViewAllSearch(''); }} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--slate-400)' }}>✕</button>
+              </div>
+
+              {/* Busca */}
+              <div style={{ padding: '16px 24px 8px 24px' }}>
+                <input 
+                  type="text" 
+                  placeholder="🔍 Buscar aluno ou sala..." 
+                  value={viewAllSearch}
+                  onChange={(e) => setViewAllSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1.5px solid var(--slate-200)',
+                    fontSize: '13.5px',
+                    fontFamily: 'Inter, sans-serif',
+                    outline: 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                />
+              </div>
+
+              {/* Corpo com a Tabela/Lista */}
+              <div className="form-body" style={{ maxHeight: '50vh', overflowY: 'auto', padding: '12px 24px 24px 24px' }}>
+                {filteredList.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--slate-400)', fontSize: '13px' }}>
+                    Nenhum aluno encontrado.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {/* Header da tabela */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 16px',
+                      color: 'var(--slate-500)',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}>
+                      <span style={{ flex: 2 }}>Aluno</span>
+                      <span style={{ flex: 1, textAlign: 'center' }}>Sala</span>
+                      {type !== 'atestado' && (
+                        <>
+                          <span style={{ width: '80px', textAlign: 'center' }}>Justif.</span>
+                          <span style={{ width: '80px', textAlign: 'center' }}>Não Justif.</span>
+                        </>
+                      )}
+                      <span style={{ width: '80px', textAlign: 'right' }}>Total</span>
+                    </div>
+
+                    {/* Linhas */}
+                    {filteredList.map((student, idx) => (
+                      <div 
+                        key={student.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '12px 16px',
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#f8fafc',
+                          borderRadius: '12px',
+                          border: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : '#e2e8f0'}`,
+                          gap: '12px'
+                        }}
+                      >
+                        <span style={{ flex: 2, fontWeight: '700', fontSize: '13.5px', color: 'var(--slate-800)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          {idx + 1}. {student.name}
+                          {student.has_acompanhamento && <span>🩺</span>}
+                        </span>
+                        <span style={{ flex: 1, textAlign: 'center', fontSize: '12px', color: 'var(--slate-500)' }}>
+                          {student.classroom}
+                        </span>
+                        {type !== 'atestado' && (
+                          <>
+                            <span style={{ width: '80px', textAlign: 'center', fontSize: '12px', color: '#047857', fontWeight: 600 }}>
+                              {student.justified}
+                            </span>
+                            <span style={{ width: '80px', textAlign: 'center', fontSize: '12px', color: '#991b1b', fontWeight: 600 }}>
+                              {student.unjustified}
+                            </span>
+                          </>
+                        )}
+                        <span style={{ 
+                          width: '80px', 
+                          textAlign: 'right', 
+                          fontWeight: '800', 
+                          fontSize: '14px', 
+                          color: color 
+                        }}>
+                          {student.total}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-footer" style={{ borderTop: '1px solid var(--slate-100)', padding: '16px 24px' }}>
+                <button className="secondary-btn" onClick={() => { setViewAllModal(null); setViewAllSearch(''); }} style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '8px' }}>Fechar</button>
               </div>
             </div>
           </div>
