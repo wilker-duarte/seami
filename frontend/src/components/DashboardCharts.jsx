@@ -91,9 +91,9 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
       classroomsList.forEach(cr => {
         if (classroom && cr !== classroom) { classroomAssiduidade[cr] = 0; return; }
         const roomAtt = attFiltered.filter(o => o.classroom === cr);
-        const total   = roomAtt.length;
+        const activeAtt = roomAtt.filter(o => o.status === 'P' || o.status === 'F' || o.status === 'FJ').length;
         const present = roomAtt.filter(o => o.status === 'P').length;
-        classroomAssiduidade[cr] = total > 0 ? Math.round((present / total) * 100) : 100;
+        classroomAssiduidade[cr] = activeAtt > 0 ? Math.round((present / activeAtt) * 100) : 100;
       });
       chartInstances.current.frequenciaSala = new Chart(ctx1, {
         type: 'bar',

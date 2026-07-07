@@ -19,9 +19,11 @@ import {
   BookOpen,
   PieChart,
   UserCheck,
-  Percent
+  Percent,
+  Trash2
 } from 'lucide-react';
-import { getStudents, getAttendance, saveAttendanceBulk, getOccurrences } from '../supabaseClient';
+import { getStudents, getAttendance, saveAttendanceBulk, getOccurrences, saveSettings } from '../supabaseClient';
+import { useAppContext } from '../context/AppContext';
 
 const isAcompanhamentoScheduledForDate = (student, dateStr) => {
   if (!student || !student.has_acompanhamento) return false;
@@ -50,6 +52,14 @@ const isAcompanhamentoScheduledForDate = (student, dateStr) => {
 };
 
 export default function DailyAttendance({ activeUser, initialTab, setActiveModule }) {
+  const { recessPeriods, reloadAppData } = useAppContext();
+
+  // Função utilitária para verificar se uma data é feriado ou recesso
+  const checkRecessOrHoliday = (dateStr) => {
+    if (!recessPeriods || recessPeriods.length === 0) return null;
+    return recessPeriods.find(p => dateStr >= p.startDate && dateStr <= p.endDate);
+  };
+
   const location = useLocation();
 
   const getInitialClassroom = () => {
@@ -97,9 +107,80 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isAttendanceSaved, setIsAttendanceSaved] = useState(false);
+  const recessOrHoliday = checkRecessOrHoliday(attendanceDate);
 
   const [calendarAttendance, setCalendarAttendance] = useState([]);
   const [loadingCalendar, setLoadingCalendar] = useState(false);
+
+  // Estados e Funções para Recessos e Feriados (Configuração Direta)
+  const [isRecessModalOpen, setIsRecessModalOpen] = useState(false);
+  const [recessForm, setRecessForm] = useState({
+    name: '',
+    type: 'recesso',
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
+  });
+
+  const handleSaveRecess = async (e) => {
+    e.preventDefault();
+    if (!recessForm.name.trim() || !recessForm.startDate) {
+      alert('Por favor, preencha o nome/descrição e a data de início.');
+      return;
+    }
+
+    const start = recessForm.startDate;
+    const end = recessForm.type === 'feriado' ? recessForm.startDate : recessForm.endDate;
+
+    if (start > end) {
+      alert('A data de término não pode ser anterior à data de início.');
+      return;
+    }
+
+    try {
+      const newPeriod = {
+        id: 'recess_' + Date.now(),
+        name: recessForm.name.trim(),
+        type: recessForm.type,
+        startDate: start,
+        endDate: end
+      };
+
+      const updatedList = [...(recessPeriods || []), newPeriod];
+      await saveSettings({ recess_periods: JSON.stringify(updatedList) });
+      alert(recessForm.type === 'feriado' ? 'Feriado adicionado com sucesso!' : 'Recesso adicionado com sucesso!');
+      
+      setRecessForm({
+        name: '',
+        type: 'recesso',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0]
+      });
+      
+      await reloadAppData();
+      setTimeout(() => {
+        fetchStudents();
+      }, 200);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao salvar período de recesso/feriado.');
+    }
+  };
+
+  const handleDeleteRecess = async (id, name) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o período "${name}"?`)) return;
+    try {
+      const updatedList = (recessPeriods || []).filter(p => p.id !== id);
+      await saveSettings({ recess_periods: JSON.stringify(updatedList) });
+      alert('Período excluído com sucesso!');
+      await reloadAppData();
+      setTimeout(() => {
+        fetchStudents();
+      }, 200);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao excluir período.');
+    }
+  };
 
   // Auxiliares do Mini Calendário Semanal
   const checkHasAttendance = (dateStr) => {
@@ -221,6 +302,20 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
         color: '#b45309',
         text: 'Justificada',
         iconColor: '#f59e0b',
+        dot: true
+      },
+      RE: {
+        bg: '#eff6ff',
+        color: '#1d4ed8',
+        text: 'Recesso',
+        iconColor: '#3b82f6',
+        dot: true
+      },
+      FE: {
+        bg: '#f5f3ff',
+        color: '#6d28d9',
+        text: 'Feriado',
+        iconColor: '#8b5cf6',
         dot: true
       }
     };
@@ -445,36 +540,43 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       });
       setStudents(filtered);
       
+      const recessOrHoliday = checkRecessOrHoliday(attendanceDate);
       const map = {};
       filtered.forEach(s => {
-        map[s.id] = 'P';
+        if (recessOrHoliday) {
+          map[s.id] = recessOrHoliday.type === 'recesso' ? 'RE' : 'FE';
+        } else {
+          map[s.id] = 'P';
+        }
       });
 
-      // Busca ocorrências para pré-preenchimento
+      // Busca ocorrências para pré-preenchimento (apenas se não for recesso/feriado)
       const occurrencesData = await getOccurrences();
       const reasons = {};
 
-      filtered.forEach(s => {
-        const studentOccs = occurrencesData.filter(o => o.studentId === s.id && (o.type === 'falta' || o.type === 'atestado'));
-        for (const occ of studentOccs) {
-          const start = occ.startDate || occ.date;
-          const end = occ.endDate || occ.date;
-          if (start && end && attendanceDate >= start && attendanceDate <= end) {
-            if (occ.type === 'atestado' || occ.justified === 'sim') {
-              map[s.id] = 'FJ';
-            } else {
-              map[s.id] = 'F';
+      if (!recessOrHoliday) {
+        filtered.forEach(s => {
+          const studentOccs = occurrencesData.filter(o => o.studentId === s.id && (o.type === 'falta' || o.type === 'atestado'));
+          for (const occ of studentOccs) {
+            const start = occ.startDate || occ.date;
+            const end = occ.endDate || occ.date;
+            if (start && end && attendanceDate >= start && attendanceDate <= end) {
+              if (occ.type === 'atestado' || occ.justified === 'sim') {
+                map[s.id] = 'FJ';
+              } else {
+                map[s.id] = 'F';
+              }
+              reasons[s.id] = {
+                type: occ.type,
+                text: occ.type === 'atestado'
+                  ? `Atestado Médico (${formatDateBR(start)} a ${formatDateBR(end)})`
+                  : `Falta Agendada (${formatDateBR(start)} a ${formatDateBR(end)})`
+              };
+              break;
             }
-            reasons[s.id] = {
-              type: occ.type,
-              text: occ.type === 'atestado'
-                ? `Atestado Médico (${formatDateBR(start)} a ${formatDateBR(end)})`
-                : `Falta Agendada (${formatDateBR(start)} a ${formatDateBR(end)})`
-            };
-            break;
           }
-        }
-      });
+        });
+      }
       setAbsenceReasons(reasons);
       
       // Verifica se já existe chamada salva no Supabase
@@ -609,6 +711,8 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       case 'P': return 'Presente';
       case 'F': return 'Falta';
       case 'FJ': return 'Falta Justificada';
+      case 'RE': return 'Recesso';
+      case 'FE': return 'Feriado';
       default: return status;
     }
   };
@@ -618,6 +722,8 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       case 'P': return 'badge badge-success';
       case 'F': return 'badge badge-danger';
       case 'FJ': return 'badge badge-warning';
+      case 'RE': return 'badge badge-info';
+      case 'FE': return 'badge badge-secondary';
       default: return 'badge';
     }
   };
@@ -735,7 +841,8 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   // 1. Relatório Diário de Frequência
   const getDailyReportData = () => {
     const dailyRecords = allAttendanceData.filter(r => r.date === reportDailyDate);
-    const total = dailyRecords.length;
+    const activeRecords = dailyRecords.filter(r => r.status === 'P' || r.status === 'F' || r.status === 'FJ');
+    const total = activeRecords.length;
     if (total === 0) return null;
 
     const present = dailyRecords.filter(r => r.status === 'P').length;
@@ -762,12 +869,14 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       Sunday.setDate(date.getDate() - date.getDay());
       const weekKey = Sunday.toISOString().split('T')[0];
 
-      if (!weeksGroup[weekKey]) {
-        weeksGroup[weekKey] = { weekStart: weekKey, total: 0, present: 0 };
-      }
-      weeksGroup[weekKey].total += 1;
-      if (record.status === 'P') {
-        weeksGroup[weekKey].present += 1;
+      if (record.status === 'P' || record.status === 'F' || record.status === 'FJ') {
+        if (!weeksGroup[weekKey]) {
+          weeksGroup[weekKey] = { weekStart: weekKey, total: 0, present: 0 };
+        }
+        weeksGroup[weekKey].total += 1;
+        if (record.status === 'P') {
+          weeksGroup[weekKey].present += 1;
+        }
       }
     });
 
@@ -776,7 +885,7 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       week: `Semana de ${formatDateBR(w.weekStart)}`,
       total: w.total,
       present: w.present,
-      rate: Math.round((w.present / w.total) * 100)
+      rate: w.total > 0 ? Math.round((w.present / w.total) * 100) : 100
     })).sort((a, b) => b.week.localeCompare(a.week)).slice(0, 8); // Pega as últimas 8 semanas
   };
 
@@ -794,12 +903,14 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       const monthKey = `${year}-${month}`;
       const monthName = `${monthNames[parseInt(month) - 1]} / ${year}`;
 
-      if (!monthsGroup[monthKey]) {
-        monthsGroup[monthKey] = { label: monthName, key: monthKey, total: 0, present: 0 };
-      }
-      monthsGroup[monthKey].total += 1;
-      if (record.status === 'P') {
-        monthsGroup[monthKey].present += 1;
+      if (record.status === 'P' || record.status === 'F' || record.status === 'FJ') {
+        if (!monthsGroup[monthKey]) {
+          monthsGroup[monthKey] = { label: monthName, key: monthKey, total: 0, present: 0 };
+        }
+        monthsGroup[monthKey].total += 1;
+        if (record.status === 'P') {
+          monthsGroup[monthKey].present += 1;
+        }
       }
     });
 
@@ -807,7 +918,7 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       month: m.label,
       total: m.total,
       present: m.present,
-      rate: Math.round((m.present / m.total) * 100)
+      rate: m.total > 0 ? Math.round((m.present / m.total) * 100) : 100
     })).sort((a, b) => b.month.localeCompare(a.month));
   };
 
@@ -820,7 +931,8 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
     }
 
     const studentRecords = allAttendanceData.filter(r => r.studentId === studentId);
-    const total = studentRecords.length;
+    const activeRecords = studentRecords.filter(r => r.status === 'P' || r.status === 'F' || r.status === 'FJ');
+    const total = activeRecords.length;
     if (total === 0) {
       setIndividualStats({ total: 0, present: 0, lack: 0, justified: 0, rate: 0, missedDates: [] });
       return;
@@ -1124,22 +1236,47 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
                         {day.dayOfMonth}
                       </span>
                       
-                      {/* Indicador de Status da chamada */}
-                      <div style={{ height: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {day.isWeekend ? null : hasAttendance ? (
-                          <div style={{
-                            backgroundColor: '#10b981',
-                            borderRadius: '50%',
-                            width: '8px',
-                            height: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white'
-                          }}>
-                            <Check size={6} strokeWidth={5} />
-                          </div>
-                        ) : null}
+                      {/* Indicador de Status da chamada / Recesso / Feriado */}
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: '12px' }}>
+                        {(() => {
+                          const recessOrHolidayDay = checkRecessOrHoliday(day.date);
+                          if (recessOrHolidayDay) {
+                            const isHoliday = recessOrHolidayDay.type === 'feriado';
+                            return (
+                              <span style={{
+                                fontSize: '7.5px',
+                                fontWeight: 800,
+                                padding: '1px 3px',
+                                borderRadius: '3px',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.1px',
+                                backgroundColor: isHoliday ? '#10b981' : '#fffbeb',
+                                color: isHoliday ? 'white' : '#b45309',
+                                border: isHoliday ? 'none' : '1px solid #fcd34d',
+                                display: 'inline-block',
+                                marginTop: '1px',
+                                whiteSpace: 'nowrap',
+                                transform: 'scale(0.9)'
+                              }}>
+                                {isHoliday ? 'Feriado' : 'Recesso'}
+                              </span>
+                            );
+                          }
+                          return day.isWeekend ? null : hasAttendance ? (
+                            <div style={{
+                              backgroundColor: '#10b981',
+                              borderRadius: '50%',
+                              width: '8px',
+                              height: '8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'white'
+                            }}>
+                              <Check size={6} strokeWidth={5} />
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
                     </button>
                   );
@@ -1149,11 +1286,29 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
 
             {/* Registrar Chamada form */}
             <div className="filter-card" style={{ flex: '2 1 450px', margin: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '20px' }}>
-              <div className="filter-card-header" style={{ marginBottom: '12px' }}>
+              <div className="filter-card-header" style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div className="filter-card-title">
                   <ClipboardCheck size={18} style={{ color: 'var(--brand-primary)' }} />
                   <span>Registrar Chamada</span>
                 </div>
+                {activeUser?.role === 'diretora' && (
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setRecessForm({
+                        name: '',
+                        type: 'recesso',
+                        startDate: new Date().toISOString().split('T')[0],
+                        endDate: new Date().toISOString().split('T')[0]
+                      });
+                      setIsRecessModalOpen(true);
+                    }}
+                    className="secondary-btn"
+                    style={{ height: '30px', fontSize: '11px', padding: '0 10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                  >
+                    🏖️ Configurar Recesso/Feriado
+                  </button>
+                )}
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, justifyContent: 'center' }}>
@@ -1260,7 +1415,28 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
                 Sem alunos matriculados ativos nesta sala.
               </div>
             ) : (
-              <div className="table-responsive">
+              <>
+                {recessOrHoliday && (
+                  <div style={{
+                    margin: '0 20px 16px 20px',
+                    padding: '12px 16px',
+                    backgroundColor: recessOrHoliday.type === 'feriado' ? '#f5f3ff' : '#eff6ff',
+                    border: `1px solid ${recessOrHoliday.type === 'feriado' ? '#ddd6fe' : '#bfdbfe'}`,
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    color: recessOrHoliday.type === 'feriado' ? '#6d28d9' : '#1d4ed8',
+                    fontSize: '13px',
+                    fontWeight: 600
+                  }}>
+                    <span>{recessOrHoliday.type === 'feriado' ? '🎉' : '🏖️'}</span>
+                    <span>
+                      Calendário Escolar: Esta data está configurada como <strong>{recessOrHoliday.type === 'feriado' ? 'Feriado' : 'Recesso'} ({recessOrHoliday.name})</strong>. A chamada foi preenchida automaticamente.
+                    </span>
+                  </div>
+                )}
+                <div className="table-responsive">
                 <table className="occurrences-table">
                   <thead>
                     <tr>
@@ -1337,58 +1513,78 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
                           </span>
                         </td>
                         <td>
-                          <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleStatusChange(student.id, 'P')}
-                              style={{
-                                padding: '6px 14px',
+                          <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', alignItems: 'center' }}>
+                            {recessOrHoliday ? (
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 16px',
                                 borderRadius: '20px',
                                 fontSize: '11px',
                                 fontWeight: 700,
-                                cursor: 'pointer',
-                                border: '1px solid #10b981',
-                                backgroundColor: attendanceMap[student.id] === 'P' ? '#10b981' : 'transparent',
-                                color: attendanceMap[student.id] === 'P' ? 'white' : '#10b981',
-                                transition: 'all 0.1s'
-                              }}
-                            >
-                              Presente
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleStatusChange(student.id, 'F')}
-                              style={{
-                                padding: '6px 14px',
-                                borderRadius: '20px',
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                border: '1px solid #ef4444',
-                                backgroundColor: attendanceMap[student.id] === 'F' ? '#ef4444' : 'transparent',
-                                color: attendanceMap[student.id] === 'F' ? 'white' : '#ef4444',
-                                transition: 'all 0.1s'
-                              }}
-                            >
-                              Falta
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleStatusChange(student.id, 'FJ')}
-                              style={{
-                                padding: '6px 14px',
-                                borderRadius: '20px',
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                border: '1px solid #f59e0b',
-                                backgroundColor: attendanceMap[student.id] === 'FJ' ? '#f59e0b' : 'transparent',
-                                color: attendanceMap[student.id] === 'FJ' ? 'white' : '#f59e0b',
-                                transition: 'all 0.1s'
-                              }}
-                            >
-                              Justificada
-                            </button>
+                                textTransform: 'uppercase',
+                                backgroundColor: recessOrHoliday.type === 'feriado' ? '#f5f3ff' : '#eff6ff',
+                                color: recessOrHoliday.type === 'feriado' ? '#6d28d9' : '#1d4ed8',
+                                border: `1px solid ${recessOrHoliday.type === 'feriado' ? '#ddd6fe' : '#bfdbfe'}`,
+                              }}>
+                                🔒 {recessOrHoliday.type === 'feriado' ? 'Feriado' : 'Recesso'}
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatusChange(student.id, 'P')}
+                                  style={{
+                                    padding: '6px 14px',
+                                    borderRadius: '20px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    border: '1px solid #10b981',
+                                    backgroundColor: attendanceMap[student.id] === 'P' ? '#10b981' : 'transparent',
+                                    color: attendanceMap[student.id] === 'P' ? 'white' : '#10b981',
+                                    transition: 'all 0.1s'
+                                  }}
+                                >
+                                  Presente
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatusChange(student.id, 'F')}
+                                  style={{
+                                    padding: '6px 14px',
+                                    borderRadius: '20px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    border: '1px solid #ef4444',
+                                    backgroundColor: attendanceMap[student.id] === 'F' ? '#ef4444' : 'transparent',
+                                    color: attendanceMap[student.id] === 'F' ? 'white' : '#ef4444',
+                                    transition: 'all 0.1s'
+                                  }}
+                                >
+                                  Falta
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatusChange(student.id, 'FJ')}
+                                  style={{
+                                    padding: '6px 14px',
+                                    borderRadius: '20px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    border: '1px solid #f59e0b',
+                                    backgroundColor: attendanceMap[student.id] === 'FJ' ? '#f59e0b' : 'transparent',
+                                    color: attendanceMap[student.id] === 'FJ' ? 'white' : '#f59e0b',
+                                    transition: 'all 0.1s'
+                                  }}
+                                >
+                                  Justificada
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1396,7 +1592,8 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
                   </tbody>
                 </table>
               </div>
-            )}
+            </>
+          )}
           </div>
         </>
       )}
@@ -2168,6 +2365,164 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
           100% { transform: rotate(360deg); }
         }
       `}} />
+
+      {/* Modal: Configurar Recesso ou Feriado */}
+      {isRecessModalOpen && (
+        <div className="modal-overlay active" style={{ zIndex: 99999 }}>
+          <div className="modal-card" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <h2>Períodos de Recesso e Feriados</h2>
+              <button type="button" className="modal-close-btn" onClick={() => setIsRecessModalOpen(false)}>×</button>
+            </div>
+            
+            <div className="form-body" style={{ maxHeight: '70vh', overflowY: 'auto', paddingRight: '4px', textAlign: 'left' }}>
+              
+              {/* FORM PARA ADICIONAR */}
+              <form onSubmit={handleSaveRecess} style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '10px', border: '1px solid var(--slate-200)', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '12px', fontWeight: 800, color: 'var(--slate-700)', margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Novo Período</h3>
+                
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--slate-600)' }}>Tipo de Evento*</label>
+                  <select 
+                    required
+                    value={recessForm.type}
+                    onChange={(e) => {
+                      const type = e.target.value;
+                      setRecessForm({ ...recessForm, type });
+                    }}
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--slate-200)', fontSize: '13px' }}
+                  >
+                    <option value="recesso">🏖️ Recesso Escolar (Período)</option>
+                    <option value="feriado">🎉 Feriado (Único dia)</option>
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--slate-600)' }}>Descrição / Nome*</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="Ex: Recesso de Natal, Proclamação da República"
+                    value={recessForm.name}
+                    onChange={(e) => setRecessForm({ ...recessForm, name: e.target.value })}
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--slate-200)', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--slate-600)' }}>Data de Início*</label>
+                  <input 
+                    type="date" 
+                    required
+                    value={recessForm.startDate}
+                    onChange={(e) => {
+                      const startDate = e.target.value;
+                      setRecessForm(prev => ({
+                        ...prev,
+                        startDate,
+                        endDate: prev.type === 'feriado' ? startDate : prev.endDate
+                      }));
+                    }}
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--slate-200)', fontSize: '13px' }}
+                  />
+                </div>
+
+                {recessForm.type === 'recesso' && (
+                  <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--slate-600)' }}>Data de Término*</label>
+                    <input 
+                      type="date" 
+                      required
+                      value={recessForm.endDate}
+                      onChange={(e) => setRecessForm({ ...recessForm, endDate: e.target.value })}
+                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--slate-200)', fontSize: '13px' }}
+                    />
+                  </div>
+                )}
+
+                <button type="submit" className="primary-btn" style={{ width: '100%', height: '36px', fontSize: '12px', justifyContent: 'center' }}>
+                  Salvar Período
+                </button>
+              </form>
+
+              {/* LISTAGEM DOS PERÍODOS EXISTENTES */}
+              <div>
+                <h3 style={{ fontSize: '12px', fontWeight: 800, color: 'var(--slate-700)', margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Períodos Configurados</h3>
+                {recessPeriods && recessPeriods.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {recessPeriods.map(period => {
+                      const isFeriado = period.type === 'feriado';
+                      return (
+                        <div key={period.id} style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center', 
+                          padding: '10px 12px', 
+                          backgroundColor: 'white', 
+                          borderRadius: '8px', 
+                          border: '1px solid var(--slate-200)',
+                          gap: '8px'
+                        }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '14px' }}>{isFeriado ? '🎉' : '🏖️'}</span>
+                              <strong style={{ fontSize: '12px', color: 'var(--slate-800)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: '160px' }} title={period.name}>
+                                {period.name}
+                              </strong>
+                              <span style={{ 
+                                fontSize: '8px', 
+                                fontWeight: '800', 
+                                backgroundColor: isFeriado ? '#ecfdf5' : '#fffbeb', 
+                                color: isFeriado ? '#047857' : '#b45309', 
+                                padding: '1px 5px', 
+                                borderRadius: '10px',
+                                textTransform: 'uppercase'
+                              }}>
+                                {isFeriado ? 'Feriado' : 'Recesso'}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '11px', color: 'var(--slate-500)' }}>
+                              {isFeriado 
+                                ? period.startDate.split('-').reverse().join('/') 
+                                : `${period.startDate.split('-').reverse().join('/')} a ${period.endDate.split('-').reverse().join('/')}`}
+                            </span>
+                          </div>
+                          <button 
+                            type="button" 
+                            onClick={() => handleDeleteRecess(period.id, period.name)}
+                            className="danger-btn"
+                            style={{ 
+                              height: '28px', 
+                              width: '28px', 
+                              padding: 0, 
+                              borderRadius: '6px', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center',
+                              flexShrink: 0
+                            }}
+                            title="Excluir período"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ padding: '16px', textAlign: 'center', border: '1px dashed var(--slate-200)', borderRadius: '8px', color: 'var(--slate-400)', fontSize: '12px' }}>
+                    Nenhum período configurado.
+                  </div>
+                )}
+              </div>
+
+            </div>
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--slate-100)', paddingTop: '12px', marginTop: '12px' }}>
+              <button type="button" className="secondary-btn" onClick={() => setIsRecessModalOpen(false)} style={{ width: '100%', height: '36px' }}>Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

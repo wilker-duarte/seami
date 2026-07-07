@@ -112,7 +112,8 @@ export default function DashboardPage({ setActiveModule }) {
   const presentAtt = attFiltered.filter(o => o.status === 'P').length;
   const lackAtt = attFiltered.filter(o => o.status === 'F').length;
   const justifiedAtt = attFiltered.filter(o => o.status === 'FJ').length;
-  const assiduidadeRate = totalAtt > 0 ? Math.round((presentAtt / totalAtt) * 100) : 100;
+  const activeAtt = attFiltered.filter(o => o.status === 'P' || o.status === 'F' || o.status === 'FJ').length;
+  const assiduidadeRate = activeAtt > 0 ? Math.round((presentAtt / activeAtt) * 100) : 100;
 
   const metrics = {
     delaysCount: delayList.length, delaysMinutes: totalMinutes,

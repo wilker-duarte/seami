@@ -9,7 +9,8 @@ import {
   deleteStaff, 
   saveStudent, 
   deleteStudent,
-  toggleStudentActive
+  toggleStudentActive,
+  saveSettings
 } from '../supabaseClient';
 
 export default function SettingsPage({
@@ -20,7 +21,7 @@ export default function SettingsPage({
   handleWipeHistory,
   handleResetEntireApp
 }) {
-  const { activeUser, turmasList, setTurmasList, reloadAppData } = useAppContext();
+  const { activeUser, turmasList, setTurmasList, reloadAppData, recessPeriods } = useAppContext();
 
   // Estados locais para dados de pessoas
   const [pessoas, setPessoas] = useState([]);
@@ -33,6 +34,7 @@ export default function SettingsPage({
   // Estados dos Modais
   const [isTurmaModalOpen, setIsTurmaModalOpen] = useState(false);
   const [isPessoaModalOpen, setIsPessoaModalOpen] = useState(false);
+  const [isRecessModalOpen, setIsRecessModalOpen] = useState(false);
 
   // Instâncias atuais em edição (null = Criação)
   const [editingTurma, setEditingTurma] = useState(null);
@@ -40,6 +42,14 @@ export default function SettingsPage({
 
   const [deactivatingStudent, setDeactivatingStudent] = useState(null);
   const [deactivationDateInput, setDeactivationDateInput] = useState(new Date().toISOString().split('T')[0]);
+
+  // Estados para Recessos e Feriados
+  const [recessForm, setRecessForm] = useState({
+    name: '',
+    type: 'recesso',
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
+  });
 
   // Estados dos Formulários
   const [turmaForm, setTurmaForm] = useState({ name: '', age_group: '' });
@@ -139,6 +149,63 @@ export default function SettingsPage({
     } catch (err) {
       console.error(err);
       alert('Erro ao excluir turma no banco de dados.');
+    }
+  };
+
+  // ==========================================
+  // OPERAÇÕES CRUD DE RECESSOS E FERIADOS
+  // ==========================================
+  const handleSaveRecess = async (e) => {
+    e.preventDefault();
+    if (!recessForm.name.trim() || !recessForm.startDate) {
+      alert('Por favor, preencha o nome/descrição e a data de início.');
+      return;
+    }
+
+    const start = recessForm.startDate;
+    const end = recessForm.type === 'feriado' ? recessForm.startDate : recessForm.endDate;
+
+    if (start > end) {
+      alert('A data de término não pode ser anterior à data de início.');
+      return;
+    }
+
+    try {
+      const newPeriod = {
+        id: 'recess_' + Date.now(),
+        name: recessForm.name.trim(),
+        type: recessForm.type,
+        startDate: start,
+        endDate: end
+      };
+
+      const updatedList = [...(recessPeriods || []), newPeriod];
+      await saveSettings({ recess_periods: JSON.stringify(updatedList) });
+      alert(recessForm.type === 'feriado' ? 'Feriado adicionado com sucesso!' : 'Recesso adicionado com sucesso!');
+      setIsRecessModalOpen(false);
+      setRecessForm({
+        name: '',
+        type: 'recesso',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0]
+      });
+      await refreshAll();
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao salvar período de recesso/feriado.');
+    }
+  };
+
+  const handleDeleteRecess = async (id, name) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o período "${name}"?`)) return;
+    try {
+      const updatedList = (recessPeriods || []).filter(p => p.id !== id);
+      await saveSettings({ recess_periods: JSON.stringify(updatedList) });
+      alert('Período excluído com sucesso!');
+      await refreshAll();
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao excluir período.');
     }
   };
 
@@ -414,6 +481,77 @@ export default function SettingsPage({
           </div>
 
           {/* ==================================================================
+              NOVA SEÇÃO: GESTÃO DE RECESSOS E FERIADOS
+              ================================================================== */}
+          <div className="settings-card" style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid var(--slate-100)', marginBottom: '32px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--slate-100)', paddingBottom: '12px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--slate-800)', margin: 0 }}>Calendário de Recessos e Feriados</h3>
+                <p className="settings-desc" style={{ fontSize: '13px', color: 'var(--slate-500)', margin: '2px 0 0 0' }}>Configure os períodos de recesso e feriados em que não haverá aplicação de faltas para os alunos.</p>
+              </div>
+              <button className="primary-btn" onClick={() => {
+                setRecessForm({
+                  name: '',
+                  type: 'recesso',
+                  startDate: new Date().toISOString().split('T')[0],
+                  endDate: new Date().toISOString().split('T')[0]
+                });
+                setIsRecessModalOpen(true);
+              }} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '10px 16px' }}>
+                <Plus size={16} />
+                <span>Configurar Período</span>
+              </button>
+            </div>
+            
+            {recessPeriods && recessPeriods.length > 0 ? (
+              <div className="staff-list-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                {recessPeriods.map(period => {
+                  const isFeriado = period.type === 'feriado';
+                  return (
+                    <div key={period.id} className="staff-member-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '16px', backgroundColor: 'var(--slate-50)', borderRadius: '12px', border: '1px solid var(--slate-200)' }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '20px' }}>{isFeriado ? '🎉' : '🏖️'}</span>
+                            <span style={{ fontWeight: '800', color: 'var(--slate-800)', fontSize: '15px' }}>{period.name}</span>
+                          </div>
+                          <span style={{ 
+                            fontSize: '10px', 
+                            fontWeight: '700', 
+                            backgroundColor: isFeriado ? '#ecfdf5' : '#fffbeb', 
+                            color: isFeriado ? '#047857' : '#b45309', 
+                            padding: '2px 8px', 
+                            borderRadius: '12px', 
+                            textTransform: 'uppercase' 
+                          }}>
+                            {isFeriado ? 'Feriado' : 'Recesso'}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '12px', color: 'var(--slate-500)', margin: '4px 0 0 0' }}>
+                          <strong>Período:</strong> {isFeriado 
+                            ? period.startDate.split('-').reverse().join('/') 
+                            : `${period.startDate.split('-').reverse().join('/')} até ${period.endDate.split('-').reverse().join('/')}`}
+                        </p>
+                      </div>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--slate-200)/10', paddingTop: '12px', marginTop: '16px' }}>
+                        <button className="danger-btn" onClick={() => handleDeleteRecess(period.id, period.name)} style={{ padding: '6px 12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', height: '30px' }}>
+                          <Trash2 size={12} />
+                          <span>Excluir</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--slate-400)', border: '1px dashed var(--slate-200)', borderRadius: '12px', fontSize: '13px' }}>
+                Nenhum recesso ou feriado configurado no momento.
+              </div>
+            )}
+          </div>
+
+          {/* ==================================================================
               3. SEÇÃO: GESTÃO DE PESSOAS (Equipe e Alunos Unificado)
               ================================================================== */}
           <div className="settings-card" style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid var(--slate-100)' }}>
@@ -520,11 +658,13 @@ export default function SettingsPage({
                               {isStudent ? (() => {
                                 let hasAcompanhamento = false;
                                 let acompanhamentoObs = '';
+                                let acompanhamentoDias = [];
                                 if (pessoa.description) {
                                   try {
                                     const parsed = JSON.parse(pessoa.description);
                                     hasAcompanhamento = parsed.has_acompanhamento || false;
                                     acompanhamentoObs = parsed.acompanhamento_obs || '';
+                                    acompanhamentoDias = parsed.acompanhamento_dias || [];
                                   } catch (e) {}
                                 }
                                 return (
@@ -905,6 +1045,81 @@ export default function SettingsPage({
                   <button type="button" className="secondary-btn" onClick={() => setDeactivatingStudent(null)}>Cancelar</button>
                   <button type="button" className="primary-btn" onClick={confirmDeactivation}>Confirmar Desativação</button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: Configurar Recesso ou Feriado */}
+          {isRecessModalOpen && (
+            <div className="modal-overlay active">
+              <div className="modal-card" style={{ maxWidth: '440px' }}>
+                <div className="modal-header">
+                  <h2>Configurar Recesso ou Feriado</h2>
+                  <button className="modal-close-btn" onClick={() => setIsRecessModalOpen(false)}>×</button>
+                </div>
+                
+                <form onSubmit={handleSaveRecess}>
+                  <div className="form-body">
+                    <div className="form-group">
+                      <label>Tipo de Evento*</label>
+                      <select 
+                        required
+                        value={recessForm.type}
+                        onChange={(e) => {
+                          const type = e.target.value;
+                          setRecessForm({ ...recessForm, type });
+                        }}
+                      >
+                        <option value="recesso">🏖️ Recesso Escolar (Período de férias/pausa)</option>
+                        <option value="feriado">🎉 Feriado (Único dia ou emendado)</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Descrição / Nome*</label>
+                      <input 
+                        type="text" 
+                        required 
+                        placeholder="Ex: Recesso de Fim de Ano, Sexta-feira Santa"
+                        value={recessForm.name}
+                        onChange={(e) => setRecessForm({ ...recessForm, name: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Data de Início*</label>
+                      <input 
+                        type="date" 
+                        required
+                        value={recessForm.startDate}
+                        onChange={(e) => {
+                          const startDate = e.target.value;
+                          setRecessForm(prev => ({
+                            ...prev,
+                            startDate,
+                            endDate: prev.type === 'feriado' ? startDate : prev.endDate
+                          }));
+                        }}
+                      />
+                    </div>
+
+                    {recessForm.type === 'recesso' && (
+                      <div className="form-group">
+                        <label>Data de Término*</label>
+                        <input 
+                          type="date" 
+                          required
+                          value={recessForm.endDate}
+                          onChange={(e) => setRecessForm({ ...recessForm, endDate: e.target.value })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="secondary-btn" onClick={() => setIsRecessModalOpen(false)}>Cancelar</button>
+                    <button type="submit" className="primary-btn">Salvar Configuração</button>
+                  </div>
+                </form>
               </div>
             </div>
           )}

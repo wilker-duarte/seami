@@ -18,6 +18,7 @@ export function AppProvider({ children }) {
   const [activeUser, setActiveUser] = useState(DEFAULT_USER);
   const [isDark, setIsDark] = useState(false);
   const [students, setStudents] = useState([]);
+  const [recessPeriods, setRecessPeriods] = useState([]);
   const [turmasList, setTurmasList] = useState([
     { id: '1', name: 'Alegria',    age_group: '0 a 1 ano (Berçário I)' },
     { id: '2', name: 'Carinho',    age_group: '1 a 2 anos (Berçário II)' },
@@ -46,8 +47,20 @@ export function AppProvider({ children }) {
         setTurmasList(turmasData);
       }
 
-      if (settingsData && settingsData.theme) {
-        setIsDark(settingsData.theme === 'dark');
+      if (settingsData) {
+        if (settingsData.theme) {
+          setIsDark(settingsData.theme === 'dark');
+        }
+        if (settingsData.recess_periods) {
+          try {
+            setRecessPeriods(JSON.parse(settingsData.recess_periods));
+          } catch (e) {
+            console.error('[AppContext] Erro ao analisar recessos e feriados:', e);
+            setRecessPeriods([]);
+          }
+        } else {
+          setRecessPeriods([]);
+        }
       }
     } catch (err) {
       console.error('[AppContext] Erro ao carregar dados:', err);
@@ -77,6 +90,8 @@ export function AppProvider({ children }) {
       setIsDark,
       students,
       setStudents,
+      recessPeriods,
+      setRecessPeriods,
       turmasList,
       setTurmasList,
       isBootstrapping,
