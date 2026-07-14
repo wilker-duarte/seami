@@ -200,24 +200,14 @@ export default function DashboardPage({ setActiveModule }) {
             <div className="metric-footer text-secondary"><span>Clique para ver a listagem completa</span></div>
           </div>
 
-          {/* Sala Alegria */}
-          <div className="metric-card" onClick={() => setSelectedClassForModal('Alegria')} style={{ borderLeft: '4px solid #3b82f6', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}>
+          {/* Sala Amizade */}
+          <div className="metric-card" onClick={() => setSelectedClassForModal('Amizade')} style={{ borderLeft: '4px solid #8b5cf6', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}>
             <div className="metric-header">
-              <span className="metric-title">Sala Alegria</span>
-              <div className="metric-icon-box" style={{ backgroundColor: '#eff6ff', color: '#3b82f6', fontSize: '16px' }}>👶</div>
+              <span className="metric-title">Sala Amizade</span>
+              <div className="metric-icon-box" style={{ backgroundColor: '#f5f3ff', color: '#8b5cf6', fontSize: '16px' }}>🎨</div>
             </div>
-            <div className="metric-value" style={{ color: '#1e3a8a' }}>{activeStudents.filter(s => s.classroom === 'Alegria').length}</div>
-            <div className="metric-footer" style={{ color: '#2563eb' }}><span>Berçário I &middot; Clique para ver</span></div>
-          </div>
-
-          {/* Sala Carinho */}
-          <div className="metric-card" onClick={() => setSelectedClassForModal('Carinho')} style={{ borderLeft: '4px solid #10b981', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}>
-            <div className="metric-header">
-              <span className="metric-title">Sala Carinho</span>
-              <div className="metric-icon-box" style={{ backgroundColor: '#ecfdf5', color: '#10b981', fontSize: '16px' }}>🧸</div>
-            </div>
-            <div className="metric-value" style={{ color: '#065f46' }}>{activeStudents.filter(s => s.classroom === 'Carinho').length}</div>
-            <div className="metric-footer" style={{ color: '#059669' }}><span>Berçário II &middot; Clique para ver</span></div>
+            <div className="metric-value" style={{ color: '#4c1d95' }}>{activeStudents.filter(s => s.classroom === 'Amizade').length}</div>
+            <div className="metric-footer" style={{ color: '#7c3aed' }}><span>Maternal II &middot; Clique para ver</span></div>
           </div>
 
           {/* Sala União */}
@@ -230,16 +220,6 @@ export default function DashboardPage({ setActiveModule }) {
             <div className="metric-footer" style={{ color: '#d97706' }}><span>Maternal I &middot; Clique para ver</span></div>
           </div>
 
-          {/* Sala Amizade */}
-          <div className="metric-card" onClick={() => setSelectedClassForModal('Amizade')} style={{ borderLeft: '4px solid #8b5cf6', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}>
-            <div className="metric-header">
-              <span className="metric-title">Sala Amizade</span>
-              <div className="metric-icon-box" style={{ backgroundColor: '#f5f3ff', color: '#8b5cf6', fontSize: '16px' }}>🎨</div>
-            </div>
-            <div className="metric-value" style={{ color: '#4c1d95' }}>{activeStudents.filter(s => s.classroom === 'Amizade').length}</div>
-            <div className="metric-footer" style={{ color: '#7c3aed' }}><span>Maternal II &middot; Clique para ver</span></div>
-          </div>
-
           {/* Sala Felicidade */}
           <div className="metric-card" onClick={() => setSelectedClassForModal('Felicidade')} style={{ borderLeft: '4px solid #ec4899', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}>
             <div className="metric-header">
@@ -249,8 +229,30 @@ export default function DashboardPage({ setActiveModule }) {
             <div className="metric-value" style={{ color: '#831843' }}>{activeStudents.filter(s => s.classroom === 'Felicidade').length}</div>
             <div className="metric-footer" style={{ color: '#db2777' }}><span>Pré-Escola &middot; Clique para ver</span></div>
           </div>
+
+          {/* Sala Carinho */}
+          <div className="metric-card" onClick={() => setSelectedClassForModal('Carinho')} style={{ borderLeft: '4px solid #10b981', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}>
+            <div className="metric-header">
+              <span className="metric-title">Sala Carinho</span>
+              <div className="metric-icon-box" style={{ backgroundColor: '#ecfdf5', color: '#10b981', fontSize: '16px' }}>🧸</div>
+            </div>
+            <div className="metric-value" style={{ color: '#065f46' }}>{activeStudents.filter(s => s.classroom === 'Carinho').length}</div>
+            <div className="metric-footer" style={{ color: '#059669' }}><span>Berçário II &middot; Clique para ver</span></div>
+          </div>
+          
+          {/* Sala Alegria */}
+          <div className="metric-card" onClick={() => setSelectedClassForModal('Alegria')} style={{ borderLeft: '4px solid #3b82f6', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}>
+            <div className="metric-header">
+              <span className="metric-title">Sala Alegria</span>
+              <div className="metric-icon-box" style={{ backgroundColor: '#eff6ff', color: '#3b82f6', fontSize: '16px' }}>👶</div>
+            </div>
+            <div className="metric-value" style={{ color: '#1e3a8a' }}>{activeStudents.filter(s => s.classroom === 'Alegria').length}</div>
+            <div className="metric-footer" style={{ color: '#2563eb' }}><span>Berçário I &middot; Clique para ver</span></div>
+          </div>
+
         </div>
       </div>
+
 
       {/* Módulo I */}
       <div style={{ marginBottom: '32px' }}>
