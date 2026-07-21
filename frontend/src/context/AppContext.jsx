@@ -19,6 +19,7 @@ export function AppProvider({ children }) {
   const [isDark, setIsDark] = useState(false);
   const [students, setStudents] = useState([]);
   const [recessPeriods, setRecessPeriods] = useState([]);
+  const [historicalData, setHistoricalData] = useState([]);
   const [turmasList, setTurmasList] = useState([
     { id: '1', name: 'Alegria',    age_group: '0 a 1 ano (Berçário I)' },
     { id: '2', name: 'Carinho',    age_group: '1 a 2 anos (Berçário II)' },
@@ -61,6 +62,17 @@ export function AppProvider({ children }) {
         } else {
           setRecessPeriods([]);
         }
+
+        if (settingsData.historical_data) {
+          try {
+            setHistoricalData(JSON.parse(settingsData.historical_data));
+          } catch (e) {
+            console.error('[AppContext] Erro ao analisar dados históricos:', e);
+            setHistoricalData([]);
+          }
+        } else {
+          setHistoricalData([]);
+        }
       }
     } catch (err) {
       console.error('[AppContext] Erro ao carregar dados:', err);
@@ -92,6 +104,8 @@ export function AppProvider({ children }) {
       setStudents,
       recessPeriods,
       setRecessPeriods,
+      historicalData,
+      setHistoricalData,
       turmasList,
       setTurmasList,
       isBootstrapping,

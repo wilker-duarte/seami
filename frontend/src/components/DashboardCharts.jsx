@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Chart from 'chart.js/auto';
-import { ClipboardCheck, BookOpen } from 'lucide-react';
+import { ClipboardCheck, BookOpen, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAppContext } from '../context/AppContext';
 
 const OCC_TYPE_OPTIONS = [
   { value: 'all',      label: 'Todos',          color: '#be185d', bg: '#fdf2f8' },
@@ -12,6 +13,7 @@ const OCC_TYPE_OPTIONS = [
 
 export default function DashboardCharts({ occurrences, attendanceList, students, filters, isDark }) {
   const navigate = useNavigate();
+  const { historicalData } = useAppContext();
   const [occTypeFilter, setOccTypeFilter] = useState('all');
 
   // Estados de controle das séries dos gráficos interativos
@@ -37,6 +39,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     faltasPorAluno:       useRef(null),
     atrasosPorAluno:      useRef(null),
     atestadosPorAluno:    useRef(null),
+    matriculadosMes:      useRef(null),
   };
 
   const chartInstances = useRef({
@@ -49,6 +52,7 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
     faltasPorAluno:       null,
     atrasosPorAluno:      null,
     atestadosPorAluno:    null,
+    matriculadosMes:      null,
   });
 
   // Estado do total de amamentação do período
@@ -658,6 +662,222 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
       }
     };
   }, [occurrences, filters, isDark, students]);
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Effect 7: Gráfico de Alunos Matriculados por Mês (Headcount Histórico)
+  // ──────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fontColor = isDark ? '#94a3b8' : '#64748b';
+    const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)';
+
+    const today = new Date();
+    const monthsData = [];
+    const monthsLabels = [];
+    const monthsNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const year = d.getFullYear();
+      const month = d.getMonth();
+      
+      const startOfMonth = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+      const lastDayVal = new Date(year, month + 1, 0).getDate();
+      const endOfMonth = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDayVal).padStart(2, '0')}`;
+      
+      const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
+      const histRecord = (historicalData || []).find(h => h.month === monthStr);
+      
+      let count = 0;
+      if (histRecord) {
+        count = histRecord.enrolled;
+      } else {
+        count = (students || []).filter(s => {
+          const entry = s.entry_date || '2026-01-01';
+          if (entry > endOfMonth) return false;
+          if (s.deactivation_date && s.deactivation_date < startOfMonth) return false;
+          return true;
+        }).length;
+      }
+      
+      monthsLabels.push(`${monthsNames[month]}/${String(year).slice(-2)}`);
+      monthsData.push(count);
+    }
+
+    if (chartInstances.current.matriculadosMes) {
+      chartInstances.current.matriculadosMes.destroy();
+      chartInstances.current.matriculadosMes = null;
+    }
+
+    const ctx = chartRefs.matriculadosMes.current;
+    if (ctx) {
+      chartInstances.current.matriculadosMes = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: monthsLabels,
+          datasets: [{
+            label: 'Total de Alunos Matriculados',
+            data: monthsData,
+            backgroundColor: 'rgba(99, 102, 241, 0.85)',
+            borderColor: '#6366f1',
+            borderWidth: 0,
+            borderRadius: 8,
+            barThickness: 32,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => ` ${ctx.parsed.y} alunos ativos no mês`,
+              },
+            },
+          },
+          scales: {
+            y: {
+              grid: { color: gridColor },
+              ticks: { color: fontColor, stepSize: 5 },
+              min: 0,
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: fontColor },
+            },
+          },
+        },
+      });
+    }
+
+    return () => {
+      if (chartInstances.current.matriculadosMes) {
+        chartInstances.current.matriculadosMes.destroy();
+        chartInstances.current.matriculadosMes = null;
+      }
+    };
+  }, [students, isDark, historicalData]);
+
+  // Lógica e Estados do Calendário de Frequência
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(new Date());
+  const [calendarClassroom, setCalendarClassroom] = useState('');
+  const [selectedCalendarDayDetails, setSelectedCalendarDayDetails] = useState(null);
+
+  useEffect(() => {
+    setCalendarClassroom(filters.classroom || '');
+  }, [filters.classroom]);
+
+  const handlePrevMonth = () => {
+    setSelectedCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setSelectedCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const renderCalendarCells = () => {
+    const year = selectedCalendarDate.getFullYear();
+    const month = selectedCalendarDate.getMonth();
+    
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    const prevTotalDays = new Date(year, month, 0).getDate();
+
+    const cells = [];
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Células do mês anterior
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const dayNum = prevTotalDays - i;
+      cells.push(
+        <div key={`prev-${dayNum}`} className="calendar-day-cell other-month">
+          <span className="calendar-day-number">{dayNum}</span>
+        </div>
+      );
+    }
+
+    // Células do mês atual
+    for (let dayNum = 1; dayNum <= totalDays; dayNum++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+      const dayOfWeek = new Date(year, month, dayNum).getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+      const dayRecords = (attendanceList || []).filter(a => a.date === dateStr);
+      const classRecords = calendarClassroom
+        ? dayRecords.filter(a => a.classroom === calendarClassroom)
+        : dayRecords;
+
+      const hasRecords = classRecords.length > 0 && !isWeekend;
+      let pct = null;
+      let present = 0;
+      let enrolled = 0;
+
+      if (hasRecords) {
+        present = classRecords.filter(a => a.status === 'P').length;
+        enrolled = (students || []).filter(s => {
+          if (calendarClassroom && s.classroom !== calendarClassroom) return false;
+          const entry = s.entry_date || '2026-01-01';
+          if (entry > dateStr) return false;
+          if (s.deactivation_date && s.deactivation_date < dateStr) return false;
+          return true;
+        }).length;
+
+        const denominator = enrolled > 0 ? enrolled : classRecords.length;
+        pct = denominator > 0 ? Math.min(100, Math.round((present / denominator) * 100)) : 100;
+      }
+
+      let cellClass = "calendar-day-cell";
+      if (dateStr === todayStr) cellClass += " today";
+      if (isWeekend) cellClass += " weekend";
+      if (!hasRecords && !isWeekend) cellClass += " no-records";
+
+      let pctClass = "calendar-day-percentage ";
+      if (pct !== null) {
+        if (pct >= 90) pctClass += "pct-high";
+        else if (pct >= 75) pctClass += "pct-medium";
+        else pctClass += "pct-low";
+      } else {
+        pctClass += "pct-none";
+      }
+
+      cells.push(
+        <div 
+          key={`current-${dayNum}`} 
+          className={cellClass}
+          onClick={() => {
+            if (hasRecords) {
+              setSelectedCalendarDayDetails({ date: dateStr, dayRecords });
+            }
+          }}
+        >
+          <span className="calendar-day-number">{dayNum}</span>
+          {!isWeekend && (
+            <span className={pctClass}>
+              {pct !== null ? `${pct}%` : '-'}
+            </span>
+          )}
+          {isWeekend && (
+            <span className="calendar-day-percentage pct-none" style={{ fontSize: '10px' }}>
+              Fim de Sem.
+            </span>
+          )}
+        </div>
+      );
+    }
+
+    // Células do mês seguinte
+    const totalGridCells = cells.length;
+    const remainingCells = totalGridCells % 7 === 0 ? 0 : 7 - (totalGridCells % 7);
+    for (let dayNum = 1; dayNum <= remainingCells; dayNum++) {
+      cells.push(
+        <div key={`next-${dayNum}`} className="calendar-day-cell other-month">
+          <span className="calendar-day-number">{dayNum}</span>
+        </div>
+      );
+    }
+
+    return cells;
+  };
 
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1542,6 +1762,78 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
               <canvas ref={chartRefs.criancasRecorrentes}></canvas>
             </div>
           </div>
+          {/* Gráfico de Alunos Matriculados por Mês */}
+          <div className="chart-card">
+            <div className="chart-card-header" style={{ flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <h3 style={{ margin: 0 }}>📈 Alunos Matriculados por Mês</h3>
+                <span style={{ fontSize: '12px', color: 'var(--slate-500)', fontFamily: 'Inter, sans-serif' }}>
+                  Evolução do headcount de alunos ativos nos últimos 6 meses
+                </span>
+              </div>
+              <span className="chart-legend-pill" style={{ backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary)' }}>Alunos Matriculados</span>
+            </div>
+            <div className="chart-container-large">
+              <canvas ref={chartRefs.matriculadosMes}></canvas>
+            </div>
+          </div>
+
+          {/* Calendário de Frequência Diária */}
+          <div className="attendance-calendar-card">
+            <div className="calendar-header">
+              <div className="calendar-title-group">
+                <h3>📅 Calendário de Frequência Diária</h3>
+                <span>Frequência dos alunos em relação à quantidade de matriculados</span>
+              </div>
+              <div className="calendar-controls">
+                <select 
+                  className="calendar-class-select"
+                  value={calendarClassroom}
+                  onChange={(e) => setCalendarClassroom(e.target.value)}
+                >
+                  <option value="">Todas as salas</option>
+                  <option value="Alegria">Alegria</option>
+                  <option value="Carinho">Carinho</option>
+                  <option value="União">União</option>
+                  <option value="Amizade">Amizade</option>
+                  <option value="Felicidade">Felicidade</option>
+                </select>
+                <div className="calendar-nav">
+                  <button className="calendar-nav-btn" onClick={handlePrevMonth}><ChevronLeft size={16} /></button>
+                  <span className="calendar-month-label">
+                    {selectedCalendarDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase())}
+                  </span>
+                  <button className="calendar-nav-btn" onClick={handleNextMonth}><ChevronRight size={16} /></button>
+                </div>
+              </div>
+            </div>
+
+            <div className="calendar-grid">
+              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
+                <div key={d} className="calendar-day-header">{d}</div>
+              ))}
+              {renderCalendarCells()}
+            </div>
+
+            <div className="calendar-legend">
+              <div className="legend-item">
+                <div className="legend-color pct-high"></div>
+                <span>Boa (≥90%)</span>
+              </div>
+              <div className="legend-item">
+                <div className="legend-color pct-medium"></div>
+                <span>Regular (75% - 89%)</span>
+              </div>
+              <div className="legend-item">
+                <div className="legend-color pct-low"></div>
+                <span>Baixa (&lt;75%)</span>
+              </div>
+              <div className="legend-item">
+                <div className="legend-color pct-none"></div>
+                <span>Sem chamadas</span>
+              </div>
+            </div>
+          </div>
 
           <div className="chart-card full-width-chart">
             <div className="chart-card-header" style={{ flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
@@ -1893,6 +2185,105 @@ export default function DashboardCharts({ occurrences, attendanceList, students,
 
               <div className="modal-footer" style={{ borderTop: '1px solid var(--slate-100)', padding: '16px 24px' }}>
                 <button className="secondary-btn" onClick={() => { setViewAllModal(null); setViewAllSearch(''); }} style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '8px' }}>Fechar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL DE DETALHES DE FREQUÊNCIA DIÁRIA (CALENDÁRIO) */}
+      {selectedCalendarDayDetails && (() => {
+        const { date, dayRecords } = selectedCalendarDayDetails;
+        const dateBR = date.split('-').reverse().join('/');
+        
+        const totalPresent = dayRecords.filter(a => a.status === 'P').length;
+        const totalEnrolled = (students || []).filter(s => {
+          const entry = s.entry_date || '2026-01-01';
+          if (entry > date) return false;
+          if (s.deactivation_date && s.deactivation_date < date) return false;
+          return true;
+        }).length;
+        
+        const overallPct = totalEnrolled > 0 ? Math.min(100, Math.round((totalPresent / totalEnrolled) * 100)) : 100;
+        const roomsList = ['Alegria', 'Carinho', 'União', 'Amizade', 'Felicidade'];
+
+        return (
+          <div className="modal-overlay active" onClick={() => setSelectedCalendarDayDetails(null)} style={{ zIndex: 1000 }}>
+            <div className="modal-card" style={{ maxWidth: '550px', width: '95%' }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '16px 24px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+                  <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'Outfit, sans-serif' }}>
+                    📊 Detalhes de Frequência - {dateBR}
+                  </h2>
+                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', fontWeight: 600 }}>
+                    Frequência Geral de todas as turmas juntas: <span style={{ color: 'var(--color-primary)', fontWeight: '800' }}>{overallPct}%</span>
+                  </span>
+                </div>
+                <button className="modal-close-btn" onClick={() => setSelectedCalendarDayDetails(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--text-light)' }}>✕</button>
+              </div>
+
+              <div className="form-body" style={{ maxHeight: '60vh', overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {roomsList.map(room => {
+                  const roomRecords = dayRecords.filter(a => a.classroom === room);
+                  const hasRoomRecords = roomRecords.length > 0;
+                  
+                  let roomPresent = 0;
+                  let roomEnrolled = 0;
+                  let roomPct = 0;
+
+                  if (hasRoomRecords) {
+                    roomPresent = roomRecords.filter(a => a.status === 'P').length;
+                    roomEnrolled = (students || []).filter(s => {
+                      if (s.classroom !== room) return false;
+                      const entry = s.entry_date || '2026-01-01';
+                      if (entry > date) return false;
+                      if (s.deactivation_date && s.deactivation_date < date) return false;
+                      return true;
+                    }).length;
+
+                    const denominator = roomEnrolled > 0 ? roomEnrolled : roomRecords.length;
+                    roomPct = denominator > 0 ? Math.min(100, Math.round((roomPresent / denominator) * 100)) : 100;
+                  }
+
+                  return (
+                    <div key={room} className="detail-row" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                        <span className="detail-row-name" style={{ fontSize: '14px', fontWeight: '700' }}>Sala {room}</span>
+                        {hasRoomRecords ? (
+                          <span className="detail-row-pct" style={{ fontWeight: '800', color: roomPct >= 90 ? 'var(--color-success)' : roomPct >= 75 ? 'var(--color-warning)' : 'var(--color-danger)' }}>
+                            {roomPct}%
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '12px', color: 'var(--text-light)', fontWeight: 500 }}>Sem Chamada</span>
+                        )}
+                      </div>
+                      
+                      {hasRoomRecords && (
+                        <>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            <span>Presentes: <strong>{roomPresent}</strong></span>
+                            <span>Matriculados: <strong>{roomEnrolled}</strong></span>
+                          </div>
+                          <div style={{ width: '100%', height: '8px', backgroundColor: 'var(--bg-input)', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div 
+                              style={{ 
+                                width: `${roomPct}%`, 
+                                height: '100%', 
+                                backgroundColor: roomPct >= 90 ? 'var(--color-success)' : roomPct >= 75 ? 'var(--color-warning)' : 'var(--color-danger)',
+                                borderRadius: '4px',
+                                transition: 'width 0.3s ease'
+                              }} 
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="modal-footer" style={{ borderTop: '1px solid var(--border-color)', padding: '16px 24px' }}>
+                <button className="secondary-btn" onClick={() => setSelectedCalendarDayDetails(null)} style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '8px' }}>Fechar</button>
               </div>
             </div>
           </div>

@@ -2431,3 +2431,287 @@ body.dark-mode .settings-action-row {
     color: #6d28d9;
     border: 1px solid #ddd6fe;
 }
+
+/* ==========================================================================
+   CALENDÁRIO DE FREQUÊNCIA & ESTILOS DE ABAS DE RELATÓRIO
+   ========================================================================== */
+.attendance-calendar-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.calendar-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.calendar-title-group h3 {
+    margin: 0;
+    font-family: var(--font-title);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.calendar-title-group span {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.calendar-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.calendar-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--bg-input);
+    padding: 4px;
+    border-radius: var(--radius-md);
+}
+
+.calendar-nav-btn {
+    border: none;
+    background: none;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color var(--transition-fast);
+}
+
+.calendar-nav-btn:hover {
+    background-color: var(--bg-card);
+}
+
+.calendar-month-label {
+    font-weight: 700;
+    font-size: 13.5px;
+    padding: 0 12px;
+    min-width: 110px;
+    text-align: center;
+    color: var(--text-primary);
+}
+
+.calendar-class-select {
+    height: 40px;
+    padding: 0 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    outline: none;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+}
+
+.calendar-day-header {
+    text-align: center;
+    font-weight: 700;
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 8px 0;
+}
+
+.calendar-day-cell {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    min-height: 80px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    position: relative;
+}
+
+.calendar-day-cell:hover {
+    transform: translateY(-2px);
+    border-color: var(--color-primary);
+    box-shadow: var(--shadow-md);
+}
+
+.calendar-day-cell.today {
+    border: 2px solid var(--color-primary);
+    background-color: rgba(99, 102, 241, 0.02);
+}
+
+.calendar-day-cell.other-month {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.calendar-day-cell.weekend {
+    background-color: rgba(148, 163, 184, 0.05);
+    cursor: not-allowed;
+}
+
+body.dark-mode .calendar-day-cell.weekend {
+    background-color: rgba(255, 255, 255, 0.01);
+}
+
+.calendar-day-number {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.calendar-day-cell.weekend .calendar-day-number {
+    color: var(--text-light);
+}
+
+.calendar-day-percentage {
+    font-size: 12px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    margin-top: 6px;
+    text-align: center;
+    width: 100%;
+}
+
+.pct-high {
+    background-color: var(--color-success-bg);
+    color: var(--color-success);
+    border: 1px solid rgba(16, 185, 129, 0.15);
+}
+
+.pct-medium {
+    background-color: var(--color-warning-bg);
+    color: var(--color-warning);
+    border: 1px solid rgba(245, 158, 11, 0.15);
+}
+
+.pct-low {
+    background-color: var(--color-danger-bg);
+    color: var(--color-danger);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+}
+
+.pct-none {
+    background-color: var(--bg-input);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.calendar-legend {
+    display: flex;
+    gap: 16px;
+    margin-top: 16px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+
+/* Abas de Relatórios */
+.report-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+.report-tab-btn {
+    border: none;
+    background: none;
+    padding: 10px 20px;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.report-tab-btn:hover {
+    background-color: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.report-tab-btn.active {
+    background-color: var(--color-primary-light);
+    color: var(--color-primary);
+}
+
+body.dark-mode .report-tab-btn.active {
+    background-color: var(--brand-light);
+    color: var(--brand-primary);
+}
+
+.detail-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background-color: var(--bg-input);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.detail-row-name {
+    font-weight: 700;
+    font-size: 13.5px;
+    color: var(--text-primary);
+}
+
+.detail-row-stats {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.detail-row-pct {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--color-primary);
+}

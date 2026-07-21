@@ -21,7 +21,7 @@ export default function SettingsPage({
   handleWipeHistory,
   handleResetEntireApp
 }) {
-  const { activeUser, turmasList, setTurmasList, reloadAppData, recessPeriods } = useAppContext();
+  const { activeUser, turmasList, setTurmasList, reloadAppData, recessPeriods, historicalData, setHistoricalData } = useAppContext();
 
   // Estados locais para dados de pessoas
   const [pessoas, setPessoas] = useState([]);
@@ -35,6 +35,7 @@ export default function SettingsPage({
   const [isTurmaModalOpen, setIsTurmaModalOpen] = useState(false);
   const [isPessoaModalOpen, setIsPessoaModalOpen] = useState(false);
   const [isRecessModalOpen, setIsRecessModalOpen] = useState(false);
+  const [isHistoricalModalOpen, setIsHistoricalModalOpen] = useState(false);
 
   // Instâncias atuais em edição (null = Criação)
   const [editingTurma, setEditingTurma] = useState(null);
@@ -42,6 +43,7 @@ export default function SettingsPage({
 
   const [deactivatingStudent, setDeactivatingStudent] = useState(null);
   const [deactivationDateInput, setDeactivationDateInput] = useState(new Date().toISOString().split('T')[0]);
+  const [historicalForm, setHistoricalForm] = useState({ id: null, month: '', enrolled: '', present: '' });
 
   // Estados para Recessos e Feriados
   const [recessForm, setRecessForm] = useState({
@@ -357,6 +359,106 @@ export default function SettingsPage({
     }
   };
 
+  // ==========================================
+  // OPERAÇÕES CRUD DE DADOS HISTÓRICOS
+  // ==========================================
+  const handleOpenHistoricalModal = (item = null) => {
+    if (item) {
+      setHistoricalForm({
+        id: item.id,
+        month: item.month,
+        enrolled: item.enrolled,
+        present: item.present
+      });
+    } else {
+      const lastMonthDate = new Date();
+      lastMonthDate.setMonth(lastMonthDate.getMonth() - 1);
+      const y = lastMonthDate.getFullYear();
+      const m = String(lastMonthDate.getMonth() + 1).padStart(2, '0');
+      setHistoricalForm({
+        id: null,
+        month: `${y}-${m}`,
+        enrolled: '',
+        present: ''
+      });
+    }
+    setIsHistoricalModalOpen(true);
+  };
+
+  const handleSaveHistorical = async (e) => {
+    e.preventDefault();
+    if (!historicalForm.month || historicalForm.enrolled === '' || historicalForm.present === '') {
+      alert('Por favor, preencha todos os campos.');
+      return;
+    }
+
+    const enrolled = parseInt(historicalForm.enrolled, 10);
+    const present = parseInt(historicalForm.present, 10);
+
+    if (isNaN(enrolled) || enrolled < 0) {
+      alert('A quantidade de matriculados deve ser um número maior ou igual a 0.');
+      return;
+    }
+    if (isNaN(present) || present < 0) {
+      alert('A quantidade de presentes deve ser um número maior ou igual a 0.');
+      return;
+    }
+    if (present > enrolled) {
+      alert('A quantidade de presentes não pode ser maior que a de matriculados.');
+      return;
+    }
+
+    const dup = (historicalData || []).find(h => h.month === historicalForm.month && h.id !== historicalForm.id);
+    if (dup) {
+      alert(`Já existe um registro histórico para o mês ${historicalForm.month.split('-').reverse().join('/')}.`);
+      return;
+    }
+
+    try {
+      let updatedList;
+      if (historicalForm.id) {
+        updatedList = (historicalData || []).map(h => 
+          h.id === historicalForm.id ? { ...h, month: historicalForm.month, enrolled, present } : h
+        );
+      } else {
+        const newItem = {
+          id: 'hist_' + Date.now(),
+          month: historicalForm.month,
+          enrolled,
+          present
+        };
+        updatedList = [...(historicalData || []), newItem];
+      }
+
+      updatedList.sort((a, b) => b.month.localeCompare(a.month));
+
+      await saveSettings({ historical_data: JSON.stringify(updatedList) });
+      setHistoricalData(updatedList);
+      alert('Dados históricos salvos com sucesso!');
+      setIsHistoricalModalOpen(false);
+      await refreshAll();
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao salvar dados históricos.');
+    }
+  };
+
+  const handleDeleteHistorical = async (id, month) => {
+    const formattedMonth = month.split('-').reverse().join('/');
+    if (!window.confirm(`Tem certeza que deseja excluir os dados históricos de ${formattedMonth}?`)) return;
+    
+    try {
+      const updatedList = (historicalData || []).filter(h => h.id !== id);
+      await saveSettings({ historical_data: JSON.stringify(updatedList) });
+      setHistoricalData(updatedList);
+      alert('Dados históricos excluídos com sucesso!');
+      await refreshAll();
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao excluir dados históricos.');
+    }
+  };
+
   // Filtragem de Pessoas com base nas abas e busca
   const filteredPessoas = pessoas.filter(pessoa => {
     const matchesSearch = pessoa.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -421,6 +523,44 @@ export default function SettingsPage({
                 <li><strong>Pedagogia:</strong> Acesso aos relatórios pedagógicos, gráficos e abas de IA. Não pode alterar a equipe ou reiniciar a base.</li>
                 <li><strong>Auxiliar:</strong> Foco em rapidez. Apenas dashboard simplificado, listagem de ocorrências e lançamento rápido. Aba de configurações oculta.</li>
               </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* CARD DE DADOS HISTÓRICOS */}
+        <div className="settings-card" style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid var(--slate-100)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--slate-800)', margin: 0 }}>📅 Dados Históricos de Frequência</h3>
+              <button className="primary-btn" onClick={() => handleOpenHistoricalModal()} style={{ padding: '6px 12px', fontSize: '11px', borderRadius: '8px' }}>
+                + Adicionar
+              </button>
+            </div>
+            <p className="settings-desc" style={{ fontSize: '13px', color: 'var(--slate-500)', margin: '0 0 16px 0' }}>
+              Insira a quantidade de matriculados e presentes de meses anteriores aos registros no app.
+            </p>
+            
+            <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {historicalData && historicalData.length > 0 ? (
+                historicalData.map(item => (
+                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', backgroundColor: 'var(--slate-50)', borderRadius: '8px', border: '1px solid var(--slate-100)', fontSize: '12px' }}>
+                    <div>
+                      <strong style={{ color: 'var(--slate-700)' }}>{item.month.split('-').reverse().join('/')}</strong>
+                      <span style={{ marginLeft: '8px', color: 'var(--slate-500)' }}>
+                        {item.enrolled} Alunos / {item.present} Pres. ({item.enrolled > 0 ? Math.round((item.present / item.enrolled) * 100) : 100}%)
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={() => handleOpenHistoricalModal(item)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', padding: '2px' }} title="Editar"><Edit size={14} /></button>
+                      <button onClick={() => handleDeleteHistorical(item.id, item.month)} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', padding: '2px' }} title="Excluir"><Trash2 size={14} /></button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--slate-400)', fontSize: '12px', border: '1px dashed var(--slate-200)', borderRadius: '8px' }}>
+                  Nenhum dado histórico registrado.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1118,6 +1258,61 @@ export default function SettingsPage({
                   <div className="modal-footer">
                     <button type="button" className="secondary-btn" onClick={() => setIsRecessModalOpen(false)}>Cancelar</button>
                     <button type="submit" className="primary-btn">Salvar Configuração</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: Adicionar/Editar Dados Históricos */}
+          {isHistoricalModalOpen && (
+            <div className="modal-overlay active">
+              <div className="modal-card" style={{ maxWidth: '440px' }}>
+                <div className="modal-header">
+                  <h2>{historicalForm.id ? 'Editar Dados Históricos' : 'Adicionar Dados Históricos'}</h2>
+                  <button className="modal-close-btn" onClick={() => setIsHistoricalModalOpen(false)}>✕</button>
+                </div>
+                <form onSubmit={handleSaveHistorical}>
+                  <div className="form-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '20px' }}>
+                    <div className="form-group">
+                      <label>Mês / Ano*</label>
+                      <input 
+                        type="month" 
+                        required 
+                        disabled={!!historicalForm.id}
+                        value={historicalForm.month}
+                        onChange={(e) => setHistoricalForm({ ...historicalForm, month: e.target.value })}
+                        style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: historicalForm.id ? 'var(--bg-input)' : 'inherit' }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Total de Alunos Matriculados*</label>
+                      <input 
+                        type="number" 
+                        required 
+                        min="0"
+                        placeholder="Ex: 50"
+                        value={historicalForm.enrolled}
+                        onChange={(e) => setHistoricalForm({ ...historicalForm, enrolled: e.target.value })}
+                        style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Total de Alunos Presentes*</label>
+                      <input 
+                        type="number" 
+                        required 
+                        min="0"
+                        placeholder="Ex: 45"
+                        value={historicalForm.present}
+                        onChange={(e) => setHistoricalForm({ ...historicalForm, present: e.target.value })}
+                        style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer" style={{ borderTop: '1px solid var(--border-color)', padding: '16px 20px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                    <button type="button" className="secondary-btn" onClick={() => setIsHistoricalModalOpen(false)} style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '8px' }}>Cancelar</button>
+                    <button type="submit" className="primary-btn" style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '8px' }}>Salvar Dados</button>
                   </div>
                 </form>
               </div>
