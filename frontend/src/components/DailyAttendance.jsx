@@ -81,6 +81,17 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const [classrooms] = useState(['Alegria', 'Carinho', 'União', 'Amizade', 'Felicidade']);
   const [selectedClassroom, setSelectedClassroom] = useState(getInitialClassroom);
   const [attendanceDate, setAttendanceDate] = useState(getInitialDate);
+  const [selectedShift, setSelectedShift] = useState('all');
+  const [shiftsSavedStatus, setShiftsSavedStatus] = useState({
+    matutino: false,
+    vespertino: false,
+    integral: false
+  });
+  const [studentIdsByShift, setStudentIdsByShift] = useState({
+    matutino: new Set(),
+    vespertino: new Set(),
+    integral: new Set()
+  });
 
   // Sincroniza estado com location.state ou query parameters da URL (ex: redirecionamento a partir do gráfico)
   useEffect(() => {
@@ -474,10 +485,10 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
   const [selectedReportStudent, setSelectedReportStudent] = useState(''); // studentId
   const [individualStats, setIndividualStats] = useState(null);
 
-  // Carrega alunos da sala selecionada ao mudar a sala ou a data
+  // Carrega alunos da sala selecionada ao mudar a sala, turno ou a data
   useEffect(() => {
     fetchStudents();
-  }, [selectedClassroom, attendanceDate]);
+  }, [selectedClassroom, selectedShift, attendanceDate]);
 
   // Carrega histórico geral no início e recarrega de forma reativa quando os filtros mudam
   useEffect(() => {
@@ -534,9 +545,10 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
       const data = await getStudents();
       const filtered = data.filter(s => {
         const matchClass = selectedClassroom === 'all' || s.classroom === selectedClassroom;
+        const matchShift = selectedShift === 'all' || s.shift === selectedShift;
         const entered = !s.entry_date || s.entry_date <= attendanceDate;
         const activeOnDate = s.active || (s.deactivation_date && s.deactivation_date >= attendanceDate);
-        return matchClass && entered && activeOnDate;
+        return matchClass && matchShift && entered && activeOnDate;
       });
       setStudents(filtered);
       
@@ -585,11 +597,32 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
         date: attendanceDate
       });
       
-      const saved = attendanceData && attendanceData.length > 0;
-      setIsAttendanceSaved(saved);
+      const allClassroomStudents = data.filter(s => {
+        const matchClass = selectedClassroom === 'all' || s.classroom === selectedClassroom;
+        const entered = !s.entry_date || s.entry_date <= attendanceDate;
+        const activeOnDate = s.active || (s.deactivation_date && s.deactivation_date >= attendanceDate);
+        return matchClass && entered && activeOnDate;
+      });
+
+      const shiftMap = {
+        matutino: new Set(allClassroomStudents.filter(s => s.shift === 'matutino').map(s => s.id)),
+        vespertino: new Set(allClassroomStudents.filter(s => s.shift === 'vespertino').map(s => s.id)),
+        integral: new Set(allClassroomStudents.filter(s => s.shift === 'integral').map(s => s.id))
+      };
+      setStudentIdsByShift(shiftMap);
+
+      const savedShifts = {
+        matutino: shiftMap.matutino.size > 0 && attendanceData && attendanceData.some(record => shiftMap.matutino.has(record.studentId)),
+        vespertino: shiftMap.vespertino.size > 0 && attendanceData && attendanceData.some(record => shiftMap.vespertino.has(record.studentId)),
+        integral: shiftMap.integral.size > 0 && attendanceData && attendanceData.some(record => shiftMap.integral.has(record.studentId))
+      };
+      setShiftsSavedStatus(savedShifts);
 
       const studentIds = new Set(filtered.map(s => s.id));
-      if (saved) {
+      const hasSavedRecords = attendanceData && attendanceData.some(record => studentIds.has(record.studentId));
+      setIsAttendanceSaved(hasSavedRecords);
+
+      if (hasSavedRecords) {
         attendanceData.forEach(record => {
           if (studentIds.has(record.studentId)) {
             map[record.studentId] = record.status;
@@ -668,6 +701,7 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
 
       showAlert('success', 'Chamada salva com sucesso!');
       setIsAttendanceSaved(true);
+      fetchStudents();
       fetchLogs(); 
       fetchCalendarAttendance();
       fetchAllAttendanceForReports();
@@ -1326,6 +1360,21 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
                     ))}
                   </select>
                 </div>
+
+                <div className="filter-group">
+                  <label style={{ fontWeight: 600, fontSize: '12.5px', color: 'var(--slate-600)' }}>Turno</label>
+                  <select 
+                    value={selectedShift} 
+                    onChange={(e) => setSelectedShift(e.target.value)}
+                    className="form-control"
+                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--slate-200)' }}
+                  >
+                    <option value="all">Todos os Turnos</option>
+                    <option value="integral">Turno Integral</option>
+                    <option value="matutino">Turno Matutino</option>
+                    <option value="vespertino">Turno Vespertino</option>
+                  </select>
+                </div>
                 
                 <div className="filter-group">
                   <label style={{ fontWeight: 600, fontSize: '12.5px', color: 'var(--slate-600)' }}>Data da Chamada</label>
@@ -1377,7 +1426,40 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
               <h3 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '15px', fontWeight: 600, color: 'var(--slate-800)' }}>
                 Alunos da Turma ({students.length})
               </h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                {/* Indicadores de Chamada por Turno */}
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  {['matutino', 'vespertino', 'integral'].map(shiftKey => {
+                    const hasStudents = studentIdsByShift[shiftKey] && studentIdsByShift[shiftKey].size > 0;
+                    if (!hasStudents) return null;
+                    const isSaved = shiftsSavedStatus[shiftKey];
+                    const label = shiftKey === 'matutino' ? 'Manhã' : shiftKey === 'vespertino' ? 'Tarde' : 'Integral';
+                    return (
+                      <span key={shiftKey} style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        backgroundColor: isSaved ? '#ecfdf5' : '#fffbeb',
+                        color: isSaved ? '#047857' : '#b45309',
+                        border: `1px solid ${isSaved ? '#a7f3d0' : '#fcd34d'}`
+                      }}>
+                        <span style={{
+                          width: '5px',
+                          height: '5px',
+                          borderRadius: '50%',
+                          backgroundColor: isSaved ? '#10b981' : '#f59e0b',
+                          display: 'inline-block'
+                        }} />
+                        {label}: {isSaved ? 'Lançado' : 'Pendente'}
+                      </span>
+                    );
+                  })}
+                </div>
+
                 <span style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -1467,6 +1549,19 @@ export default function DailyAttendance({ activeUser, initialTab, setActiveModul
                             <div>
                               <span style={{ fontWeight: 600, color: 'var(--slate-800)', display: 'block' }}>{student.name}</span>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
+                                <span style={{
+                                  fontSize: '10px',
+                                  color: 'var(--slate-500)',
+                                  backgroundColor: '#f8fafc',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  textTransform: 'capitalize',
+                                  fontWeight: 600,
+                                  border: '1px solid var(--slate-100)',
+                                  marginTop: '2px'
+                                }}>
+                                  Turno: {student.shift || 'Integral'}
+                                </span>
                                 {isAcompanhamentoScheduledForDate(student, attendanceDate) && (
                                   <span style={{
                                     display: 'inline-flex',

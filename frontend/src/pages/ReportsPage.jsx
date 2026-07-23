@@ -12,7 +12,7 @@ export default function ReportsPage() {
 
   const [occurrences, setOccurrences] = useState([]);
   const [attendanceList, setAttendanceList] = useState([]);
-  const [activeTab, setActiveTab] = useState('faltas'); // 'faltas' | 'frequencia'
+  const [activeTab, setActiveTab] = useState('faltas'); // 'faltas' | 'atrasos' | 'frequencia'
   const [groupByClassroom, setGroupByClassroom] = useState(false);
   const [filters, setFilters] = useState({
     justified: 'all',  // 'all' | 'sim' | 'nao'
@@ -21,6 +21,17 @@ export default function ReportsPage() {
     dateStart: '',
     dateEnd: ''
   });
+  const [appliedFilters, setAppliedFilters] = useState({
+    justified: 'all',
+    classroom: '',
+    studentId: '',
+    dateStart: '',
+    dateEnd: ''
+  });
+
+  const handleApplyFilters = () => {
+    setAppliedFilters({ ...filters });
+  };
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState(null);
 
@@ -123,11 +134,10 @@ export default function ReportsPage() {
     const today = new Date();
     const past = new Date();
     past.setDate(today.getDate() - days);
-    setFilters(f => ({
-      ...f,
-      dateStart: past.toISOString().split('T')[0],
-      dateEnd: today.toISOString().split('T')[0]
-    }));
+    const dateStart = past.toISOString().split('T')[0];
+    const dateEnd = today.toISOString().split('T')[0];
+    setFilters(f => ({ ...f, dateStart, dateEnd }));
+    setAppliedFilters(f => ({ ...f, dateStart, dateEnd }));
   };
 
   // Apenas faltas do caderno SEAMI (type === 'falta')
@@ -136,11 +146,18 @@ export default function ReportsPage() {
     [occurrences]
   );
 
+  // Apenas atrasos do caderno SEAMI (type === 'atraso')
+  const allAtrasos = useMemo(() =>
+    occurrences.filter(o => o.type === 'atraso'),
+    [occurrences]
+  );
+
   // Lista filtrada
   const list = useMemo(() => {
-    return allAbsences
+    const baseList = activeTab === 'faltas' ? allAbsences : allAtrasos;
+    return baseList
       .filter(o => {
-        const { justified, classroom, studentId, dateStart, dateEnd } = filters;
+        const { justified, classroom, studentId, dateStart, dateEnd } = appliedFilters;
         if (justified === 'sim' && o.justified !== 'sim') return false;
         if (justified === 'nao' && o.justified === 'sim') return false;
         if (classroom && o.classroom !== classroom) return false;
@@ -150,28 +167,30 @@ export default function ReportsPage() {
         return true;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [allAbsences, filters]);
+  }, [activeTab, allAbsences, allAtrasos, appliedFilters]);
 
   // Estatísticas da lista filtrada
   const justifiedCount = list.filter(o => o.justified === 'sim').length;
   const unjustifiedCount = list.filter(o => o.justified !== 'sim').length;
 
-  // Total de faltas no ano atual (ignorando filtros de data/justificativa, mantendo sala/aluno)
+  // Total no ano atual (ignorando filtros de data/justificativa, mantendo sala/aluno)
   const currentYear = new Date().getFullYear();
   const yearStart = `${currentYear}-01-01`;
   const yearEnd = `${currentYear}-12-31`;
-  const annualAbsences = useMemo(() => {
-    return allAbsences.filter(o => {
+  
+  const annualOccurrences = useMemo(() => {
+    const baseList = activeTab === 'faltas' ? allAbsences : allAtrasos;
+    return baseList.filter(o => {
       if (o.date < yearStart || o.date > yearEnd) return false;
-      if (filters.classroom && o.classroom !== filters.classroom) return false;
-      if (filters.studentId && o.studentId !== filters.studentId) return false;
+      if (appliedFilters.classroom && o.classroom !== appliedFilters.classroom) return false;
+      if (appliedFilters.studentId && o.studentId !== appliedFilters.studentId) return false;
       return true;
     });
-  }, [allAbsences, filters.classroom, filters.studentId, yearStart, yearEnd]);
+  }, [activeTab, allAbsences, allAtrasos, appliedFilters.classroom, appliedFilters.studentId, yearStart, yearEnd]);
 
-  const annualJustified = annualAbsences.filter(o => o.justified === 'sim').length;
-  const annualUnjustified = annualAbsences.filter(o => o.justified !== 'sim').length;
-  const annualTotal = annualAbsences.length;
+  const annualJustified = annualOccurrences.filter(o => o.justified === 'sim').length;
+  const annualUnjustified = annualOccurrences.filter(o => o.justified !== 'sim').length;
+  const annualTotal = annualOccurrences.length;
 
   // Calcula faltas anuais por aluno (para alertas de limite)
   const studentAnnualMap = useMemo(() => {
@@ -184,6 +203,18 @@ export default function ReportsPage() {
     });
     return map;
   }, [allAbsences, yearStart, yearEnd]);
+
+  // Calcula atrasos anuais por aluno
+  const studentAnnualDelaysMap = useMemo(() => {
+    const map = {};
+    allAtrasos.forEach(o => {
+      if (o.date >= yearStart && o.date <= yearEnd && o.studentId) {
+        if (!map[o.studentId]) map[o.studentId] = { name: o.studentName, total: 0 };
+        map[o.studentId].total++;
+      }
+    });
+    return map;
+  }, [allAtrasos, yearStart, yearEnd]);
 
   const studentsOverLimit = Object.values(studentAnnualMap).filter(s => s.total >= ABSENCE_LIMIT);
 
@@ -199,28 +230,29 @@ export default function ReportsPage() {
   const exportExcel = () => {
     if (list.length === 0) { alert('Não há dados para exportar.'); return; }
     if (typeof window.XLSX === 'undefined') { alert('Biblioteca SheetJS não carregada.'); return; }
+    const isFaltas = activeTab === 'faltas';
     const mapped = list.map((occ, idx) => ({
-      'Data Reg. Ausência': occ.date ? occ.date.split('-').reverse().join('/') : '-',
+      [isFaltas ? 'Data Reg. Ausência' : 'Data Reg. Atraso']: occ.date ? occ.date.split('-').reverse().join('/') : '-',
       'Criança': occ.studentName || '-',
       'Sala': occ.classroom || '-',
       'Motivo Declarado': occ.motive || '-',
-      'Data de Início da Ausência': occ.startDate ? occ.startDate.split('-').reverse().join('/') : '-',
-      'Data de Fim da Ausência': occ.endDate ? occ.endDate.split('-').reverse().join('/') : '-',
+      [isFaltas ? 'Data de Início da Ausência' : 'Data de Início do Atraso']: occ.startDate ? occ.startDate.split('-').reverse().join('/') : '-',
+      [isFaltas ? 'Data de Fim da Ausência' : 'Data de Fim do Atraso']: occ.endDate ? occ.endDate.split('-').reverse().join('/') : '-',
       'Dias': occ.days || '-',
-      'Falta Justificada por Escrito?': occ.justified === 'sim' ? 'Sim' : 'Não',
-      'Houve Aviso Prévio dos Pais?': occ.notified === 'sim' ? 'Sim' : 'Não',
+      [isFaltas ? 'Falta Justificada por Escrito?' : 'Atraso Justificado por Escrito?']: occ.justified === 'sim' ? 'Sim' : 'Não',
+      [isFaltas ? 'Houve Aviso Prévio dos Pais?' : 'Houve Aviso Prévio dos Pais?']: occ.notified === 'sim' ? 'Sim' : 'Não',
       'Mensagem/Justificativa da Família': occ.obs || '-',
       'Responsável': occ.guardian || 'N/A',
       'Registrado por': occ.recordedBy || '-'
     }));
     const ws = window.XLSX.utils.json_to_sheet(mapped);
     const wb = window.XLSX.utils.book_new();
-    window.XLSX.utils.book_append_sheet(wb, ws, 'Faltas');
+    window.XLSX.utils.book_append_sheet(wb, ws, isFaltas ? 'Faltas' : 'Atrasos');
     const maxLens = {};
     mapped.forEach(row => Object.keys(row).forEach(k => { maxLens[k] = Math.max(maxLens[k] || 10, String(row[k]).length); }));
     ws['!cols'] = Object.keys(maxLens).map(k => ({ wch: maxLens[k] + 3 }));
     const dateSuffix = new Date().toISOString().split('T')[0];
-    window.XLSX.writeFile(wb, `Relatorio_Faltas_${dateSuffix}.xlsx`);
+    window.XLSX.writeFile(wb, `Relatorio_${isFaltas ? 'Faltas' : 'Atrasos'}_${dateSuffix}.xlsx`);
   };
 
   // ── EXPORTAR PDF ────────────────────────────────────────────────────────────
@@ -229,6 +261,7 @@ export default function ReportsPage() {
     if (typeof window.jspdf === 'undefined') { alert('Biblioteca jsPDF não carregada.'); return; }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const isFaltas = activeTab === 'faltas';
 
     // Cabeçalho
     doc.setFillColor(99, 102, 241);
@@ -239,8 +272,8 @@ export default function ReportsPage() {
     doc.text('EducaGestão Portal Creche', 12, 16);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text('Relatório de Gestão de Faltas (Justificadas e Não Justificadas)', 12, 24);
-    doc.text(`Emissão: ${new Date().toLocaleDateString('pt-BR')} | Total filtrado: ${list.length} | Justificadas: ${justifiedCount} | Não justificadas: ${unjustifiedCount}`, 12, 31);
+    doc.text(isFaltas ? 'Relatório de Gestão de Faltas (Justificadas e Não Justificadas)' : 'Relatório de Gestão de Atrasos (Justizados e Não Justificados)', 12, 24);
+    doc.text(`Emissão: ${new Date().toLocaleDateString('pt-BR')} | Total filtrado: ${list.length} | Justificados: ${justifiedCount} | Não justificados: ${unjustifiedCount}`, 12, 31);
 
     let y = 50;
     doc.setFontSize(9.5);
@@ -253,7 +286,7 @@ export default function ReportsPage() {
       doc.text('Data', 12, y);
       doc.text('Criança', 31, y);
       doc.text('Sala', 79, y);
-      doc.text('Tipo de Falta', 99, y);
+      doc.text(isFaltas ? 'Tipo de Falta' : 'Tipo de Atraso', 99, y);
       doc.text('Justificativa / Motivo', 129, y);
       doc.text('Detalhes', 185, y);
       doc.text('Responsável', 241, y);
@@ -265,7 +298,7 @@ export default function ReportsPage() {
     list.forEach(occ => {
       if (y > 188) { doc.addPage(); y = 20; drawHeader(); }
       const dateBR = occ.date ? occ.date.split('-').reverse().join('/') : '-';
-      const tipoFalta = occ.justified === 'sim' ? 'Justificada' : 'Não Justificada';
+      const tipoStatus = occ.justified === 'sim' ? (isFaltas ? 'Justificada' : 'Justificado') : (isFaltas ? 'Não Justificada' : 'Não Justificado');
       const nameTrunc = occ.studentName && occ.studentName.length > 22 ? occ.studentName.substring(0, 20) + '...' : (occ.studentName || '-');
       const justificativa = occ.motive ? (occ.motive.length > 26 ? occ.motive.substring(0, 24) + '...' : occ.motive) : '-';
       const detalhes = occ.obs ? (occ.obs.length > 26 ? occ.obs.substring(0, 24) + '...' : occ.obs) : '-';
@@ -286,7 +319,7 @@ export default function ReportsPage() {
       } else {
         doc.setTextColor(153, 27, 27);
       }
-      doc.text(tipoFalta, 99, y);
+      doc.text(tipoStatus, 99, y);
       doc.setTextColor(30, 41, 59);
       doc.text(justificativa, 129, y);
       doc.text(detalhes, 185, y);
@@ -297,12 +330,12 @@ export default function ReportsPage() {
     });
 
     const dateSuffix = new Date().toISOString().split('T')[0];
-    doc.save(`Relatorio_Faltas_${dateSuffix}.pdf`);
+    doc.save(`Relatorio_${isFaltas ? 'Faltas' : 'Atrasos'}_${dateSuffix}.pdf`);
   };
 
   // ── LÓGICA DE FREQUÊNCIA ──────────────────────────────────────────────────
   const frequencyRows = useMemo(() => {
-    const { dateStart, dateEnd, classroom } = filters;
+    const { dateStart, dateEnd, classroom } = appliedFilters;
     
     let startStr = dateStart;
     let endStr = dateEnd;
@@ -418,7 +451,7 @@ export default function ReportsPage() {
     });
 
     return rows.sort((a, b) => b.date.localeCompare(a.date));
-  }, [filters, attendanceList, students, groupByClassroom, historicalData]);
+  }, [appliedFilters, attendanceList, students, groupByClassroom, historicalData]);
 
   const frequencyStats = useMemo(() => {
     if (frequencyRows.length === 0) return { days: 0, avgEnrolled: 0, avgPresent: 0, avgRate: 100 };
@@ -548,6 +581,12 @@ export default function ReportsPage() {
           📅 Relatório de Faltas
         </button>
         <button 
+          className={`report-tab-btn ${activeTab === 'atrasos' ? 'active' : ''}`}
+          onClick={() => setActiveTab('atrasos')}
+        >
+          ⏰ Relatório de Atrasos
+        </button>
+        <button 
           className={`report-tab-btn ${activeTab === 'frequencia' ? 'active' : ''}`}
           onClick={() => setActiveTab('frequencia')}
         >
@@ -560,10 +599,16 @@ export default function ReportsPage() {
         <div className="filter-card-header">
           <div className="filter-card-title">
             <Filter size={18} />
-            <span>{activeTab === 'faltas' ? 'Relatório de Gestão de Faltas' : 'Relatório de Frequência vs Matriculados'}</span>
+            <span>
+              {activeTab === 'faltas' 
+                ? 'Relatório de Gestão de Faltas' 
+                : activeTab === 'atrasos' 
+                  ? 'Relatório de Gestão de Atrasos' 
+                  : 'Relatório de Frequência vs Matriculados'}
+            </span>
           </div>
           <div className="export-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            {activeTab === 'faltas' ? (
+            {(activeTab === 'faltas' || activeTab === 'atrasos') ? (
               <>
                 <button className="export-btn excel-btn" onClick={exportExcel}>📊 Exportar Excel</button>
                 <button className="export-btn pdf-btn" onClick={exportPDF}>📄 Exportar PDF</button>
@@ -585,13 +630,13 @@ export default function ReportsPage() {
         </div>
 
         <div className="filter-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-          {activeTab === 'faltas' && (
+          {(activeTab === 'faltas' || activeTab === 'atrasos') && (
             <div className="filter-group">
-              <label>Tipo de Falta</label>
+              <label>{activeTab === 'faltas' ? 'Tipo de Falta' : 'Tipo de Atraso'}</label>
               <select value={filters.justified} onChange={e => setFilters(f => ({ ...f, justified: e.target.value }))}>
-                <option value="all">Todas as faltas</option>
-                <option value="sim">Apenas Justificadas</option>
-                <option value="nao">Apenas Não Justificadas</option>
+                <option value="all">{activeTab === 'faltas' ? 'Todas as faltas' : 'Todos os atrasos'}</option>
+                <option value="sim">Apenas Justificados</option>
+                <option value="nao">Apenas Não Justificados</option>
               </select>
             </div>
           )}
@@ -606,7 +651,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Criança */}
-          {activeTab === 'faltas' && (
+          {(activeTab === 'faltas' || activeTab === 'atrasos') && (
             <div className="filter-group">
               <label>Criança</label>
               <select value={filters.studentId} onChange={e => setFilters(f => ({ ...f, studentId: e.target.value }))}>
@@ -636,13 +681,46 @@ export default function ReportsPage() {
           {/* Data inicial */}
           <div className="filter-group">
             <label>Data Inicial</label>
-            <input type="date" value={filters.dateStart} onChange={e => setFilters(f => ({ ...f, dateStart: e.target.value }))} />
+            <input 
+              type="date" 
+              value={filters.dateStart} 
+              onChange={e => setFilters(f => ({ ...f, dateStart: e.target.value }))} 
+            />
           </div>
 
           {/* Data final */}
           <div className="filter-group">
             <label>Data Final</label>
-            <input type="date" value={filters.dateEnd} onChange={e => setFilters(f => ({ ...f, dateEnd: e.target.value }))} />
+            <input 
+              type="date" 
+              value={filters.dateEnd} 
+              onChange={e => setFilters(f => ({ ...f, dateEnd: e.target.value }))} 
+            />
+          </div>
+
+          {/* Confirmar Pesquisa */}
+          <div className="filter-group" style={{ alignSelf: 'end' }}>
+            <button 
+              type="button"
+              onClick={handleApplyFilters} 
+              className="primary-btn" 
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                padding: '9px 20px', 
+                borderRadius: '8px', 
+                fontSize: '13px', 
+                fontWeight: 600,
+                cursor: 'pointer',
+                height: '38px',
+                justifyContent: 'center',
+                width: '100%'
+              }}
+            >
+              <Filter size={16} />
+              Confirmar Pesquisa
+            </button>
           </div>
         </div>
 
@@ -651,26 +729,35 @@ export default function ReportsPage() {
           <button className="preset-btn" onClick={() => setPreset(7)}>Últimos 7 dias</button>
           <button className="preset-btn" onClick={() => setPreset(30)}>Últimos 30 dias</button>
           <button className="preset-btn" onClick={() => setPreset(90)}>Último Trimestre</button>
-          <button className="preset-btn" onClick={() => setFilters(f => ({ ...f, dateStart: `${currentYear}-01-01`, dateEnd: `${currentYear}-12-31` }))}>Este Ano</button>
-          <button className="preset-btn" style={{ color: 'var(--text-secondary)' }} onClick={() => setFilters({ justified: 'all', classroom: '', studentId: '', dateStart: '', dateEnd: '' })}>Limpar Filtros</button>
+          <button className="preset-btn" onClick={() => {
+            const thisYearStart = `${currentYear}-01-01`;
+            const thisYearEnd = `${currentYear}-12-31`;
+            setFilters(f => ({ ...f, dateStart: thisYearStart, dateEnd: thisYearEnd }));
+            setAppliedFilters(f => ({ ...f, dateStart: thisYearStart, dateEnd: thisYearEnd }));
+          }}>Este Ano</button>
+          <button className="preset-btn" style={{ color: 'var(--text-secondary)' }} onClick={() => {
+            const cleared = { justified: 'all', classroom: '', studentId: '', dateStart: '', dateEnd: '' };
+            setFilters(cleared);
+            setAppliedFilters(cleared);
+          }}>Limpar Filtros</button>
         </div>
       </div>
 
       {/* ── SEÇÃO DE ABAS CONDICIONAIS ───────────────────────────────── */}
-      {activeTab === 'faltas' ? (
+      {(activeTab === 'faltas' || activeTab === 'atrasos') ? (
         <>
-          {/* ── BANNER DE ESTATÍSTICAS (FALTAS) ─────────────────────────── */}
+          {/* ── BANNER DE ESTATÍSTICAS ─────────────────────────── */}
           <div className="report-stats-banner" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
             <div className="report-stat-item" style={{ borderLeft: '4px solid #ef4444' }}>
-              <span className="report-stat-label">Faltas no Filtro</span>
+              <span className="report-stat-label">{activeTab === 'faltas' ? 'Faltas no Filtro' : 'Atrasos no Filtro'}</span>
               <span className="report-stat-val" style={{ color: '#b91c1c' }}>{list.length}</span>
             </div>
             <div className="report-stat-item" style={{ borderLeft: '4px solid #f59e0b' }}>
-              <span className="report-stat-label">✅ Justificadas</span>
+              <span className="report-stat-label">{activeTab === 'faltas' ? '✅ Justificadas' : '✅ Justificados'}</span>
               <span className="report-stat-val" style={{ color: '#92400e' }}>{justifiedCount}</span>
             </div>
             <div className="report-stat-item" style={{ borderLeft: '4px solid #ef4444' }}>
-              <span className="report-stat-label">❌ Não Justificadas</span>
+              <span className="report-stat-label">{activeTab === 'faltas' ? '❌ Não Justificadas' : '❌ Não Justificados'}</span>
               <span className="report-stat-val" style={{ color: '#991b1b' }}>{unjustifiedCount}</span>
             </div>
             <div className="report-stat-item" style={{ borderLeft: '4px solid #6366f1', backgroundColor: 'rgba(99,102,241,0.05)' }}>
@@ -685,7 +772,7 @@ export default function ReportsPage() {
               <span className="report-stat-val text-primary">{new Set(list.map(o => o.studentId)).size}</span>
             </div>
 
-            {studentsOverLimit.length > 0 && (
+            {activeTab === 'faltas' && studentsOverLimit.length > 0 && (
               <div className="report-stat-item" style={{ borderLeft: '4px solid #dc2626', backgroundColor: 'rgba(239,68,68,0.07)', gridColumn: 'span 1' }}>
                 <span className="report-stat-label" style={{ color: '#dc2626', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <AlertTriangle size={13} /> Limite de {ABSENCE_LIMIT} Faltas/Ano
@@ -700,7 +787,7 @@ export default function ReportsPage() {
             )}
           </div>
 
-          {/* ── TABELA (FALTAS) ─────────────────────────────────────────── */}
+          {/* ── TABELA ─────────────────────────────────────────── */}
           <div className="table-card">
             <div className="table-responsive">
               <table className="data-table">
@@ -709,10 +796,10 @@ export default function ReportsPage() {
                     <th>Data</th>
                     <th>Criança</th>
                     <th>Sala</th>
-                    <th>Tipo de Falta</th>
+                    <th>{activeTab === 'faltas' ? 'Tipo de Falta' : 'Tipo de Atraso'}</th>
                     <th>Justificativa / Motivo</th>
                     <th>Responsável</th>
-                    <th>Faltas no Ano</th>
+                    <th>{activeTab === 'faltas' ? 'Faltas no Ano' : 'Atrasos no Ano'}</th>
                     <th>Comprovante</th>
                   </tr>
                 </thead>
@@ -721,13 +808,16 @@ export default function ReportsPage() {
                     <tr>
                       <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '40px' }}>
                         <Info size={32} style={{ margin: '0 auto 8px', color: 'var(--text-light)' }} />
-                        Nenhuma falta encontrada com os filtros selecionados.
+                        {activeTab === 'faltas' ? 'Nenhuma falta encontrada com os filtros selecionados.' : 'Nenhum atraso encontrado com os filtros selecionados.'}
                       </td>
                     </tr>
                   ) : (
                     list.map(occ => {
-                      const annualCount = studentAnnualMap[occ.studentId]?.total ?? 0;
-                      const isOver = annualCount >= ABSENCE_LIMIT;
+                      const annualCount = activeTab === 'faltas' 
+                        ? (studentAnnualMap[occ.studentId]?.total ?? 0)
+                        : (studentAnnualDelaysMap[occ.studentId]?.total ?? 0);
+                      const isOver = activeTab === 'faltas' && annualCount >= ABSENCE_LIMIT;
+                      
                       return (
                         <tr key={occ.id}>
                           <td><strong>{occ.date.split('-').reverse().join('/')}</strong></td>
@@ -740,11 +830,11 @@ export default function ReportsPage() {
                           <td>
                             {occ.justified === 'sim' ? (
                               <span className="occ-type-pill" style={{ backgroundColor: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d' }}>
-                                ✅ Justificada
+                                {activeTab === 'faltas' ? '✅ Justificada' : '✅ Justificado'}
                               </span>
                             ) : (
                               <span className="occ-type-pill" style={{ backgroundColor: '#fef2f2', color: '#991b1b', border: '1px solid #fca5a5' }}>
-                                ❌ Não Justificada
+                                {activeTab === 'faltas' ? '❌ Não Justificada' : '❌ Não Justificado'}
                               </span>
                             )}
                           </td>
@@ -762,7 +852,7 @@ export default function ReportsPage() {
                               color: isOver ? '#991b1b' : (annualCount >= 7 ? '#92400e' : '#166534'),
                               border: `1px solid ${isOver ? '#fca5a5' : (annualCount >= 7 ? '#fcd34d' : '#bbf7d0')}`
                             }}>
-                              {annualCount}/{ABSENCE_LIMIT} {isOver ? '⚠️' : ''}
+                              {annualCount}{activeTab === 'faltas' ? `/${ABSENCE_LIMIT}` : ''} {isOver ? '⚠️' : ''}
                             </span>
                           </td>
                           <td>
